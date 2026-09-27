@@ -8,11 +8,11 @@ import {
   Play,
   Square,
   RotateCcw,
-  FastForward,
   Send,
   Sparkles,
   AlertCircle,
-  HelpCircle,
+  Loader2,
+  XCircle,
 } from 'lucide-react';
 
 interface VoiceControlsProps {
@@ -22,11 +22,11 @@ interface VoiceControlsProps {
   isCallActive: boolean;
   onStartCall: () => void;
   onEndCall: () => void;
-  onNextMessage: () => void;
-  onFastForward: () => void;
   onReset: () => void;
-  hasNextMessage: boolean;
-  onSendCustomCustomerMessage: (text: string) => void;
+  onSendCustomerMessage: (text: string) => void;
+  isThinking?: boolean;
+  errorMessage?: string | null;
+  onClearError?: () => void;
 }
 
 export const VoiceControls: React.FC<VoiceControlsProps> = ({
@@ -36,18 +36,17 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
   isCallActive,
   onStartCall,
   onEndCall,
-  onNextMessage,
-  onFastForward,
   onReset,
-  hasNextMessage,
-  onSendCustomCustomerMessage,
+  onSendCustomerMessage,
+  isThinking = false,
+  errorMessage = null,
+  onClearError,
 }) => {
   const [micActive, setMicActive] = useState(false);
   const [showMicNotice, setShowMicNotice] = useState(false);
   const [customInput, setCustomInput] = useState('');
 
   const handleMicClick = () => {
-    // Show mock explanation notice
     setShowMicNotice(true);
     setMicActive(!micActive);
     setTimeout(() => {
@@ -57,8 +56,8 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
 
   const handleCustomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customInput.trim()) return;
-    onSendCustomCustomerMessage(customInput.trim());
+    if (!customInput.trim() || isThinking) return;
+    onSendCustomerMessage(customInput.trim());
     setCustomInput('');
   };
 
@@ -70,12 +69,20 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
           <div className="relative">
             <span
               className={`block h-3 w-3 rounded-full ${
-                isCallActive ? 'bg-emerald-500 animate-ping' : 'bg-emerald-500'
+                isThinking
+                  ? 'bg-amber-500 animate-ping'
+                  : isCallActive
+                  ? 'bg-emerald-500 animate-ping'
+                  : 'bg-emerald-500'
               }`}
             />
             <span
               className={`absolute top-0 left-0 block h-3 w-3 rounded-full ${
-                isCallActive ? 'bg-emerald-500' : 'bg-emerald-500'
+                isThinking
+                  ? 'bg-amber-500'
+                  : isCallActive
+                  ? 'bg-emerald-500'
+                  : 'bg-emerald-500'
               }`}
             />
           </div>
@@ -83,7 +90,7 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
             <div className="flex items-center gap-2">
               <span className="font-bold text-slate-900 text-sm">Summit HVAC</span>
               <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                AI Receptionist Ready
+                Gemini 3.8 Flash Active
               </span>
             </div>
             <p className="text-xs text-slate-500">
@@ -96,16 +103,21 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
         <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-2.5 py-1 rounded-md">
           <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
           <span className="font-medium text-[11px]">
-            Prototype Mode: Mock Audio &amp; State Only
+            Stage 3: Real Gemini AI Conversation
           </span>
         </div>
       </div>
 
-      {/* Scenario Selector Tabs */}
+      {/* Scenario Presets */}
       <div>
-        <label className="block text-xs font-semibold text-slate-700 mb-2">
-          Select HVAC Call Scenario:
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-xs font-semibold text-slate-700">
+            Quick-Start Inbound Call Presets:
+          </label>
+          <span className="text-[10px] text-slate-400">
+            Sends opening inquiry directly to Gemini
+          </span>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {scenarios.map((sc) => {
             const isSelected = sc.id === activeScenarioId;
@@ -113,12 +125,13 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
               <button
                 key={sc.id}
                 type="button"
+                disabled={isThinking}
                 onClick={() => onSelectScenario(sc.id)}
                 className={`p-2.5 rounded-lg text-left text-xs transition border flex flex-col justify-between ${
                   isSelected
                     ? 'border-blue-600 bg-blue-50/80 text-blue-900 font-semibold ring-1 ring-blue-600'
                     : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700'
-                }`}
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">
@@ -141,8 +154,9 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
           {!isCallActive ? (
             <button
               type="button"
+              disabled={isThinking}
               onClick={onStartCall}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 active:bg-emerald-800 transition"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 active:bg-emerald-800 transition disabled:opacity-50"
             >
               <Play className="h-4 w-4 fill-white" />
               <span>Start Conversation</span>
@@ -150,40 +164,20 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
           ) : (
             <button
               type="button"
+              disabled={isThinking}
               onClick={onEndCall}
-              className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-rose-700 active:bg-rose-800 transition"
+              className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-rose-700 active:bg-rose-800 transition disabled:opacity-50"
             >
               <Square className="h-4 w-4 fill-white" />
               <span>End Conversation</span>
             </button>
           )}
 
-          {isCallActive && hasNextMessage && (
-            <>
-              <button
-                type="button"
-                onClick={onNextMessage}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition"
-              >
-                <span>Next Turn</span>
-                <FastForward className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={onFastForward}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2.5 text-xs sm:text-sm font-medium text-indigo-700 hover:bg-indigo-100 transition"
-                title="Complete all remaining turns in this call"
-              >
-                <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
-                <span>Fast-Forward Call</span>
-              </button>
-            </>
-          )}
-
           <button
             type="button"
+            disabled={isThinking}
             onClick={onReset}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 transition disabled:opacity-50"
             title="Reset conversation state"
           >
             <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
@@ -207,7 +201,7 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
             ) : (
               <MicOff className="h-4 w-4 text-slate-400" />
             )}
-            <span>Mic (Mock UI)</span>
+            <span>Mic (Voice Mock)</span>
           </button>
 
           {/* Toast / Tooltip explaining microphone mock */}
@@ -217,10 +211,10 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
                 <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold text-amber-300">
-                    Prototype Mode (Phase 1 & 2)
+                    Voice UI Mockup
                   </p>
                   <p className="text-slate-300 mt-1 leading-normal">
-                    Microphone is currently a UI visual component. Live voice &amp; speech synthesis will be integrated in subsequent phases with real voice models.
+                    Text conversations are powered live by Gemini 3.8 Flash. Live voice audio streaming will be integrated in Phase 4.
                   </p>
                 </div>
               </div>
@@ -229,26 +223,55 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
         </div>
       </div>
 
-      {/* Manual Customer Query Input (Mocking custom customer input) */}
+      {/* Error Alert Display */}
+      {errorMessage && (
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-start justify-between gap-2 text-xs text-rose-800">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+            <span>{errorMessage}</span>
+          </div>
+          {onClearError && (
+            <button
+              type="button"
+              onClick={onClearError}
+              className="text-rose-500 hover:text-rose-700 font-bold px-1"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Manual Customer Query Input */}
       <form onSubmit={handleCustomSubmit} className="pt-2">
-        <label className="block text-xs font-medium text-slate-600 mb-1.5">
-          Or Type a Customer Inquiry to Simulate:
+        <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+          Type Customer Inquiry to AI Receptionist:
         </label>
         <div className="flex items-center gap-2">
           <input
             type="text"
             value={customInput}
+            disabled={isThinking}
             onChange={(e) => setCustomInput(e.target.value)}
-            placeholder="e.g. Can someone check my AC tonight? It stopped blowing cold."
-            className="flex-1 rounded-lg border border-slate-300 px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            placeholder="e.g. My AC isn't cooling. Can someone come tomorrow?"
+            className="flex-1 rounded-lg border border-slate-300 px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
           />
           <button
             type="submit"
-            disabled={!customInput.trim()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            disabled={!customInput.trim() || isThinking}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-xs"
           >
-            <span>Send</span>
-            <Send className="h-3.5 w-3.5" />
+            {isThinking ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Thinking...</span>
+              </>
+            ) : (
+              <>
+                <span>Send</span>
+                <Send className="h-3.5 w-3.5" />
+              </>
+            )}
           </button>
         </div>
       </form>

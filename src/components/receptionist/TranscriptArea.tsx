@@ -8,12 +8,14 @@ interface TranscriptAreaProps {
   messages: ConversationMessage[];
   isCallActive: boolean;
   detectedIntent?: string;
+  isThinking?: boolean;
 }
 
 export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
   messages,
   isCallActive,
   detectedIntent,
+  isThinking = false,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -21,7 +23,7 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isThinking]);
 
   return (
     <div className="flex flex-col h-[460px] bg-slate-900 rounded-xl border border-slate-800 shadow-inner overflow-hidden">
@@ -55,7 +57,7 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
             </div>
             <p className="font-medium text-slate-300">No active conversation</p>
             <p className="text-xs text-slate-400 mt-1 max-w-xs">
-              Click &quot;Start Conversation&quot; below or pick an HVAC scenario to simulate a customer call.
+              Type a customer message below or pick a preset inquiry to start a real Gemini AI conversation.
             </p>
           </div>
         ) : (
@@ -124,6 +126,23 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
             );
           })
         )}
+
+        {/* Real-time Thinking Indicator */}
+        {isThinking && (
+          <div className="flex gap-3 justify-start animate-fade-in">
+            <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5 animate-pulse">
+              <Bot className="h-4 w-4" />
+            </div>
+            <div className="bg-slate-800 text-slate-300 border border-slate-700/70 rounded-2xl rounded-tl-xs px-4 py-3 text-xs flex items-center gap-2 shadow-xs">
+              <div className="flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.3s]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.15s]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-bounce" />
+              </div>
+              <span className="text-slate-300">Gemini is processing response...</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer Status */}
@@ -131,13 +150,23 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
         <div className="flex items-center gap-1.5">
           <span
             className={`h-2 w-2 rounded-full ${
-              isCallActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+              isThinking
+                ? 'bg-amber-400 animate-ping'
+                : isCallActive
+                ? 'bg-emerald-400 animate-pulse'
+                : 'bg-slate-500'
             }`}
           />
-          <span>{isCallActive ? 'Call in progress (Mock Local State)' : 'Call Idle'}</span>
+          <span>
+            {isThinking
+              ? 'AI Receptionist thinking...'
+              : isCallActive
+              ? 'Conversation Active'
+              : 'Call Idle'}
+          </span>
         </div>
         <span className="text-slate-400 font-mono text-[10px]">
-          Audio: Simulated UI (Phase 1 & 2)
+          Engine: Gemini 3.8 Flash
         </span>
       </div>
     </div>

@@ -15,6 +15,18 @@ export type ServiceType =
   | 'Emergency Inspection'
   | 'General Inquiry';
 
+export type AllowedIntent =
+  | 'AC_COOLING_FAILURE'
+  | 'HEATING_FAILURE'
+  | 'MAINTENANCE'
+  | 'INSTALLATION'
+  | 'PRICING'
+  | 'APPOINTMENT'
+  | 'SERVICE_AREA'
+  | 'EMERGENCY'
+  | 'GENERAL_QUESTION'
+  | 'UNKNOWN';
+
 export interface CustomerInfo {
   name: string;
   phone: string;
@@ -31,6 +43,48 @@ export interface ConversationMessage {
   text: string;
   timestamp: string;
   extractedDetails?: Partial<CustomerInfo>;
+}
+
+export interface ExtractedCustomerData {
+  customerName?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  serviceType?: string | null;
+  reportedIssue?: string | null;
+  urgency?: UrgencyLevel | null;
+  preferredAppointmentTime?: string | null;
+  isEmergencySafetyHazard?: boolean;
+  hasCustomerRequestedAppointment?: boolean;
+}
+
+export interface ChatHistoryMessage {
+  role: 'user' | 'model';
+  content: string;
+}
+
+export interface ChatApiRequest {
+  messages: ChatHistoryMessage[];
+  currentData?: Partial<CustomerInfo>;
+}
+
+export interface ChatApiResponse {
+  message: string;
+  detectedIntent: AllowedIntent;
+  extractedData: ExtractedCustomerData;
+  leadStatus: LeadStatus;
+}
+
+export interface ConversationState {
+  messages: ConversationMessage[];
+  customerName: string;
+  phone: string;
+  address: string;
+  serviceType: string;
+  reportedIssue: string;
+  urgency: UrgencyLevel;
+  preferredAppointmentTime: string;
+  leadStatus: LeadStatus;
+  detectedIntent: AllowedIntent;
 }
 
 export interface BusinessProfile {
