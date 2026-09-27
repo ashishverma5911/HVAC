@@ -52,7 +52,14 @@ export function formatGeminiError(err: unknown): { message: string; status: numb
       };
     }
 
-    if (msg.includes('not found') || msg.includes('model')) {
+    if (msg.includes('high demand') || msg.includes('unavailable') || msg.includes('503')) {
+      return {
+        message: 'The AI service is temporarily experiencing high demand. Please try sending your message again in a few seconds.',
+        status: 503,
+      };
+    }
+
+    if (msg.includes('not found') || msg.includes('is not found for api version')) {
       return {
         message: `The specified Gemini model (${getGeminiModel()}) could not be accessed. Please check GEMINI_MODEL setting.`,
         status: 404,

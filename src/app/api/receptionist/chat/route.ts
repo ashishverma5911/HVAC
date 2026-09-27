@@ -55,43 +55,61 @@ export async function POST(req: NextRequest) {
       parts: [{ text: m.content.trim() }],
     }));
 
-    // 4. Call Gemini API with structured JSON output schema
-    const response = await ai.models.generateContent({
-      model,
-      contents,
-      config: {
-        systemInstruction: SUMMIT_HVAC_SYSTEM_INSTRUCTION,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'object',
-          properties: {
-            reply: {
-              type: 'string',
-              description: 'The natural conversational text response from the receptionist to the customer.',
-            },
-            detectedIntent: {
-              type: 'string',
-              description: 'Detected customer intent category.',
-            },
-            extractedData: {
+    // 4. Call Gemini API with structured JSON output schema (with transient retry)
+    let response;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        response = await ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction: SUMMIT_HVAC_SYSTEM_INSTRUCTION,
+            responseMimeType: 'application/json',
+            responseSchema: {
               type: 'object',
               properties: {
-                customerName: { type: 'string' },
-                phone: { type: 'string' },
-                address: { type: 'string' },
-                serviceType: { type: 'string' },
-                reportedIssue: { type: 'string' },
-                urgency: { type: 'string' },
-                preferredAppointmentTime: { type: 'string' },
-                isEmergencySafetyHazard: { type: 'boolean' },
-                hasCustomerRequestedAppointment: { type: 'boolean' },
+                reply: {
+                  type: 'string',
+                  description: 'The natural conversational text response from the receptionist to the customer.',
+                },
+                detectedIntent: {
+                  type: 'string',
+                  description: 'Detected customer intent category.',
+                },
+                extractedData: {
+                  type: 'object',
+                  properties: {
+                    customerName: { type: 'string' },
+                    phone: { type: 'string' },
+                    address: { type: 'string' },
+                    serviceType: { type: 'string' },
+                    reportedIssue: { type: 'string' },
+                    urgency: { type: 'string' },
+                    preferredAppointmentTime: { type: 'string' },
+                    isEmergencySafetyHazard: { type: 'boolean' },
+                    hasCustomerRequestedAppointment: { type: 'boolean' },
+                  },
+                },
               },
+              required: ['reply', 'detectedIntent'],
             },
           },
-          required: ['reply', 'detectedIntent'],
-        },
-      },
-    });
+        });
+        break;
+      } catch (err: unknown) {
+        const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+        const isTransient = msg.includes('high demand') || msg.includes('unavailable') || msg.includes('503');
+        if (isTransient && attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!response) {
+      throw new Error('No response received from Gemini.');
+    }
 
     const responseText = response.text?.trim() || '';
 
