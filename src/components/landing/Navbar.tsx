@@ -37,10 +37,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute = 'home' }) => {
               PROTOTYPE MODE
             </span>
             <span className="hidden sm:inline text-slate-300">
-              Stage 1/2 Architecture & UI Preview. Voice and phone telephony are simulated.
+              Stage 3 — Real Gemini AI Conversation. Voice and phone telephony are simulated.
             </span>
             <span className="sm:hidden text-slate-300">
-              Stage 1/2 Prototype Demo.
+              Stage 3 — Real Gemini AI Conversation.
             </span>
           </div>
           <span className="text-[11px] text-slate-400">Summit HVAC Demo</span>

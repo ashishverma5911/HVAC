@@ -19,7 +19,7 @@ export const Footer: React.FC = () => {
             </p>
             <div className="mt-4 flex items-center gap-2 text-[11px] text-amber-400 bg-slate-800/80 px-3 py-1.5 rounded border border-amber-500/20 max-w-fit">
               <Shield className="h-3.5 w-3.5" />
-              <span>Prototype Development Stage (Phase 1 & Phase 2 UI Architecture)</span>
+              <span>Stage 3 — Real Gemini AI Conversation</span>
             </div>
           </div>
 
@@ -67,7 +67,7 @@ export const Footer: React.FC = () => {
 
         <div className="pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
           <p>© {new Date().getFullYear()} HVAC AI Receptionist Prototype. All rights reserved.</p>
-          <p>No paid services, phone lines, or live customer tracking connected in Phase 1/2.</p>
+          <p>No paid services, phone lines, or live customer tracking connected in Phase 3.</p>
         </div>
       </div>
     </footer>
