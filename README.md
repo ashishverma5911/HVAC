@@ -24,9 +24,7 @@ Small HVAC contractors frequently miss inbound customer calls while working on r
   - Powered live by Google's official `@google/genai` SDK.
   - Server-side API endpoint `POST /api/receptionist/chat` ensures zero client-side credential exposure.
   - Multi-turn conversation memory preserving context across queries.
-  - Strict system instruction tailored for **Summit HVAC** (Dallas, TX).
-  - Safety protocol: immediately detects natural gas odors, smoke, or fire hazards, triggers life-safety evacuation instructions, and escalates for emergency dispatch.
-  - Structured entity extraction automatically updates the Customer Information Panel.
+  - Safety protocol: immediately detects natural gas odors, sparks, fire, smoke, or immediate hazards; prioritizes getting callers to a safe location outdoors; advises contacting appropriate local emergency services when immediate danger exists; provides zero technical repair advice; and supports contractor-configured emergency escalation procedures.
   - Intent classification (`AC_COOLING_FAILURE`, `HEATING_FAILURE`, `MAINTENANCE`, `INSTALLATION`, `PRICING`, `APPOINTMENT`, `SERVICE_AREA`, `EMERGENCY`, `GENERAL_QUESTION`, `UNKNOWN`).
 
 - **Landing & Value Proposition Page**:

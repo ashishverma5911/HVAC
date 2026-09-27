@@ -39,7 +39,7 @@ export const mockRecentLeads: DashboardLead[] = [
     status: 'transferred',
     timeReceived: '1 hour ago',
     phone: '(469) 555-0132',
-    notes: 'Strong odor near furnace closet. Atmos protocol initiated; escalated to on-call manager.',
+    notes: 'Strong odor near furnace closet. Emergency safety protocol initiated (caller advised to move to safe location and contact local emergency services); escalated to on-call manager.',
   },
   {
     id: 'lead-4',

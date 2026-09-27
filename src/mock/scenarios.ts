@@ -101,11 +101,11 @@ export const demoScenarios: DemoScenario[] = [
       },
       {
         sender: 'ai',
-        text: 'SAFETY ALERT: If you smell natural gas, please evacuate everyone from the home immediately and do not turn any electrical switches or open flames on. Once outside at a safe distance, call 911 or Atmos Energy at 866-322-8667.',
+        text: 'SAFETY ALERT: If you smell natural gas, please prioritize getting everyone to a safe location outdoors immediately and do not turn on any electrical switches or open flames. Once in a safe location, contact local emergency services or 911 if there is immediate danger.',
       },
       {
         sender: 'customer',
-        text: "We are stepping outside on the patio now. Who can check the system after Atmos clears it?",
+        text: "We are stepping outside on the patio now. Who can check the system after emergency services clear the property?",
         extractedInfo: {
           name: 'Robert Martinez',
           address: '712 Crestview Dr, Irving, TX',
