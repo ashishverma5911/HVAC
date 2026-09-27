@@ -7,6 +7,11 @@ import { GoogleGenAI } from '@google/genai';
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 
 /**
+ * Fallback Gemini models when the primary preview model hits free-tier quota limits or high demand.
+ */
+export const FALLBACK_GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
+
+/**
  * Error categories for Gemini API interactions.
  */
 export type GeminiErrorCategory =

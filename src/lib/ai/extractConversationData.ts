@@ -78,6 +78,26 @@ export function calculateLeadStatus(
 }
 
 /**
+ * Sanitizes extracted strings to prevent literal "null", "undefined", or "none" values from polluting state.
+ */
+export function sanitizeExtractedString(val: unknown): string {
+  if (!val || typeof val !== 'string') return '';
+  const trimmed = val.trim();
+  const lower = trimmed.toLowerCase();
+  if (
+    lower === 'null' ||
+    lower === 'undefined' ||
+    lower === 'none' ||
+    lower === 'n/a' ||
+    lower === 'not provided' ||
+    lower === 'unknown'
+  ) {
+    return '';
+  }
+  return trimmed;
+}
+
+/**
  * Merges newly extracted data into existing CustomerInfo state conservatively.
  * Never overwrites existing valid information with null or empty strings.
  */
@@ -87,25 +107,29 @@ export function mergeCustomerInfo(
 ): CustomerInfo {
   const merged: CustomerInfo = { ...existing };
 
-  if (extracted.customerName && extracted.customerName.trim().length > 1) {
-    merged.name = extracted.customerName.trim();
+  const name = sanitizeExtractedString(extracted.customerName);
+  if (name.length > 1) {
+    merged.name = name;
   }
 
-  if (extracted.phone && extracted.phone.trim().length > 3) {
-    merged.phone = extracted.phone.trim();
+  const phone = sanitizeExtractedString(extracted.phone);
+  if (phone.length > 3) {
+    merged.phone = phone;
   }
 
-  if (extracted.address && extracted.address.trim().length > 2) {
-    merged.address = extracted.address.trim();
+  const address = sanitizeExtractedString(extracted.address);
+  if (address.length > 2) {
+    merged.address = address;
   }
 
-  if (extracted.serviceType && extracted.serviceType.trim().length > 0) {
-    merged.serviceType = extracted.serviceType.trim();
+  const serviceType = sanitizeExtractedString(extracted.serviceType);
+  if (serviceType.length > 0) {
+    merged.serviceType = serviceType;
   }
 
-  if (extracted.reportedIssue && extracted.reportedIssue.trim().length > 0) {
-    // If problem description already exists, append or update with more specific info
-    merged.problemDescription = extracted.reportedIssue.trim();
+  const reportedIssue = sanitizeExtractedString(extracted.reportedIssue);
+  if (reportedIssue.length > 0) {
+    merged.problemDescription = reportedIssue;
   }
 
   if (extracted.urgency) {
