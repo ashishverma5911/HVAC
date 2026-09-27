@@ -203,7 +203,7 @@ export const RecentLeadsTable: React.FC<RecentLeadsTableProps> = ({ leads }) => 
 
               <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                 <span className="text-slate-500 block text-[11px] font-semibold mb-1">
-                  AI Call Notes &amp; Diagnostics:
+                  AI Call Notes &amp; Reported Issues:
                 </span>
                 <p className="text-slate-800 leading-relaxed">
                   {selectedLead.notes}

@@ -2,7 +2,11 @@
 
 A purpose-built AI receptionist system engineered for small and independent US heating, ventilation, and air conditioning (HVAC) contractors.
 
-The core product idea is an automated, 24/7 receptionist that answers inbound customer calls, diagnoses HVAC symptoms, answers common business FAQs (such as service territory and trip fees), captures verified caller information, qualifies leads, schedules technician inspection windows, and escalates emergencies.
+The core product idea is an automated, 24/7 receptionist that answers inbound customer calls, understands reported HVAC issues, collects relevant information, and routes or escalates requests appropriately. It answers common business FAQs based on contractor configuration (such as service areas and business hours), captures verified caller information, qualifies leads, and records preferred appointment windows.
+
+> [!IMPORTANT]
+> **Operational Boundary & Non-Diagnosis Policy**:
+> The AI receptionist is strictly designed for customer service intake, lead capture, and routing for human contractors and certified technicians. It **does NOT** perform professional HVAC diagnosis, repair decisions, safety determinations, or technical instructions. All inspection pricing, fees, and service policies displayed in the demo are fictional demonstration data configurable by each contractor.
 
 ---
 
@@ -20,20 +24,20 @@ Small HVAC contractors frequently miss inbound customer calls while working on r
   - High-trust hero section tailored specifically for US HVAC contractors.
   - Zero hype, unsupported revenue claims, or fake testimonials.
   - 4 capability pillars: Answers Customer Questions, Captures Complete Leads, Handles After-Hours Inquiries, and Escalates When Human Help Is Needed.
-  - Explanation of the 3-step call flow: Inbound Greeting &rarr; HVAC Problem Assessment &rarr; Action & Dispatch.
+  - Explanation of the 3-step call flow: Inbound Greeting &rarr; Issue Intake & Routing &rarr; Action & Dispatch.
 
 - **Interactive AI Receptionist Live Simulator**:
   - Dedicated simulation console for fictional Dallas contractor **Summit HVAC**.
   - Visual status indicator: `AI Receptionist Ready`.
-  - Start Conversation and End Conversation controls.
+  - Start Conversation, End Conversation, Next Turn, and Fast-Forward controls.
   - Clear **Prototype Mode** banners and disclaimers explaining that voice and audio telephony are simulated in this stage.
   - Conversation Transcript Area with clear visual differentiation between AI receptionist responses, customer statements, and life-safety alerts.
   - **6 Realistic HVAC Scenario Presets**:
-    1. *AC Not Cooling (High Urgency)*: Homeowner with 84°F indoor temp, troubleshooting outside compressor fan, qualifying lead, booking afternoon slot.
-    2. *Emergency Gas Smell / Escalation*: Natural gas odor triage, life-safety evacuation protocol, Atmos Energy / 911 alert, escalation to senior technician.
-    3. *Diagnostic Fee & Pricing Inquiry*: Explains standard $89 trip fee policy that applies toward repairs; transparent booking.
+    1. *AC Not Cooling (High Urgency)*: Homeowner with 84°F indoor temp, notes reported symptoms, qualifies lead, and reserves afternoon technician slot.
+    2. *Emergency Gas Smell / Escalation*: Natural gas odor triage, life-safety evacuation reminder to call 911 / Atmos Energy, immediate escalation to senior technician.
+    3. *Inspection Pricing & Policy Inquiry*: Demonstrates answering customer pricing questions using fictional contractor-configured demo policies (e.g. standard diagnostic inspection pricing); transparent customer communication.
     4. *Seasonal Maintenance Request*: Routine 21-point spring tune-up for 2 exterior Carrier condensers.
-    5. *Service Area Confirmation*: Inquires about Garland/Rowlett zip codes, confirms coverage territory, reserves diagnostic visit.
+    5. *Service Area Confirmation*: Inquires about Garland/Rowlett zip codes, confirms coverage territory, reserves technician service window.
     6. *After-Hours Emergency Triage*: 9:45 PM call with infant at home, priority 7:30 AM dispatch triage.
   - **Custom Caller Simulation**: Type any freeform customer inquiry into the console to test simulated receptionist responses.
 
@@ -57,7 +61,7 @@ Small HVAC contractors frequently miss inbound customer calls while working on r
 - **Contractor Dashboard Preview (`/dashboard`)**:
   - High-level KPIs: Calls Today (24), Leads (8), Appointments (4), Urgent Requests (2).
   - Searchable and filterable Recent Leads table with realistic contractor records (John Smith, Sarah Johnson, Robert Martinez, Karen Brooks, etc.).
-  - Inspection detail modal showing diagnostic notes recorded by the AI.
+  - Inspection detail modal showing call notes and reported issues recorded by the AI.
 
 ---
 

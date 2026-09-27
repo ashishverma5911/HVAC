@@ -166,13 +166,13 @@ export const ReceptionistDemo: React.FC = () => {
         };
         setDetectedIntent('SAFETY_HAZARD_GAS_LEAK');
       } else if (lower.includes('price') || lower.includes('cost') || lower.includes('charge')) {
-        aiResponse = "Our standard diagnostic trip fee in the Dallas metro is $89, which is applied directly toward any repairs you approve. Would you like to schedule an inspection?";
+        aiResponse = "Under Summit HVAC's demo configuration, our standard diagnostic inspection fee is $89, which is credited toward any repairs you approve. (Note: Inspection fees and pricing policies are fully configurable by each contractor). Would you like to schedule an inspection window?";
         setDetectedIntent('PRICING_INQUIRY');
       } else if (lower.includes('hour') || lower.includes('open')) {
         aiResponse = "Summit HVAC is open Monday through Friday from 8:00 AM to 6:00 PM, with 24/7 priority on-call dispatch for urgent heating and cooling failures.";
         setDetectedIntent('BUSINESS_HOURS_INQUIRY');
       } else if (lower.includes('not cooling') || lower.includes('warm') || lower.includes('ac')) {
-        aiResponse = "I'm sorry your AC is acting up! Is the outside compressor fan spinning, and is there any ice buildup on the copper refrigerant pipe?";
+        aiResponse = "I'm sorry to hear that. I have noted down that your system is not cooling properly. May I have your name and service address to check technician availability for an inspection?";
         extracted = {
           serviceType: 'AC Repair',
           problemDescription: text,

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { HelpCircle, UserCheck, Moon, AlertTriangle, ArrowRight } from 'lucide-react';
+import { HelpCircle, UserCheck, Moon, AlertTriangle, Info } from 'lucide-react';
 
 export const TrustSection: React.FC = () => {
   return (
@@ -15,7 +15,7 @@ export const TrustSection: React.FC = () => {
             How the AI Receptionist Supports Your Daily Field Operations
           </p>
           <p className="mt-3 text-sm text-slate-600">
-            Purpose-built to handle inbound HVAC calls clearly, collect organized details, and respect safety protocols.
+            Purpose-built to handle inbound HVAC calls clearly, understand reported issues, collect caller details, and route requests to your team.
           </p>
         </div>
 
@@ -30,11 +30,11 @@ export const TrustSection: React.FC = () => {
                 Answers Customer Questions
               </h3>
               <p className="text-sm text-slate-600 leading-relaxed">
-                Accurately answers standard business FAQs including service territory, diagnostic trip fees, business hours, and accepted payment types based on your company settings.
+                Accurately answers standard business FAQs including service territory, contractor-configured inspection policies, business hours, and accepted payment types based on your company settings.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-200/80 text-xs font-medium text-slate-500">
-              Clear & factual business information
+              Clear &amp; factual business information
             </div>
           </div>
 
@@ -48,7 +48,7 @@ export const TrustSection: React.FC = () => {
                 Captures Complete Leads
               </h3>
               <p className="text-sm text-slate-600 leading-relaxed">
-                Conversational intake collects customer full name, verified call-back phone number, physical service address, equipment symptoms, and preferred inspection time windows.
+                Conversational intake collects customer full name, verified call-back phone number, physical service address, reported equipment issues, and preferred inspection time windows.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-200/80 text-xs font-medium text-slate-500">
@@ -84,13 +84,21 @@ export const TrustSection: React.FC = () => {
                 Escalates When Human Help Is Needed
               </h3>
               <p className="text-sm text-slate-600 leading-relaxed">
-                Trained safety checks immediately detect gas odors, burning electrical smells, or flooded pans. It triggers safety evacuation advice and alerts on-duty technician supervisors.
+                Recognizes reported urgent hazards such as gas odors or burning smells, advises contacting local emergency services (911 or utility), and immediately flags the call for human contractor follow-up.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-200/80 text-xs font-medium text-slate-500">
-              Life-safety protocol compliance
+              Priority escalation protocol
             </div>
           </div>
+        </div>
+
+        {/* Clear Scope Disclaimer Notice */}
+        <div className="mt-8 p-3.5 bg-slate-50 rounded-lg border border-slate-200 flex items-start gap-2.5 text-xs text-slate-600 max-w-3xl mx-auto">
+          <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+          <p>
+            <strong className="text-slate-800">Operational Boundary:</strong> The AI receptionist understands reported HVAC issues, collects relevant information, and routes or escalates requests appropriately. It does not perform professional HVAC diagnosis, repair decisions, safety determinations, or technical instructions.
+          </p>
         </div>
 
         {/* How It Works Subsection */}
@@ -115,15 +123,15 @@ export const TrustSection: React.FC = () => {
 
             <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-xs relative">
               <span className="text-3xl font-black text-slate-200 mb-2 block">02</span>
-              <h4 className="text-sm font-bold text-slate-900 mb-1">HVAC Problem Assessment</h4>
+              <h4 className="text-sm font-bold text-slate-900 mb-1">Issue Intake &amp; Routing</h4>
               <p className="text-xs text-slate-600">
-                The AI listens to the issue, assesses urgency, collects address and callback info, and determines if it is an emergency or routine service.
+                The AI listens to the reported issue, collects service address and callback details, and notes urgency for your dispatchers.
               </p>
             </div>
 
             <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-xs relative">
               <span className="text-3xl font-black text-slate-200 mb-2 block">03</span>
-              <h4 className="text-sm font-bold text-slate-900 mb-1">Action & Dispatch Notification</h4>
+              <h4 className="text-sm font-bold text-slate-900 mb-1">Action &amp; Dispatch Notification</h4>
               <p className="text-xs text-slate-600">
                 A structured lead and appointment request is logged. Confirmation details are sent to the customer, and urgent matters alert your team.
               </p>

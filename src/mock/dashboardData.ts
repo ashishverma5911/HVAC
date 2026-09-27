@@ -55,13 +55,13 @@ export const mockRecentLeads: DashboardLead[] = [
   {
     id: 'lead-5',
     customerName: 'David Vance',
-    service: 'Heat Pump Diagnostic',
+    service: 'Heat Pump Inspection Request',
     city: 'Dallas, TX',
     urgency: 'normal',
     status: 'completed',
     timeReceived: '4 hours ago',
     phone: '(972) 555-0177',
-    notes: 'Confirmed $89 diagnostic fee policy. Dispatched to tech slot tomorrow morning.',
+    notes: 'Inquired about standard inspection fee policy (demo configuration: $89). Routed to technician schedule for tomorrow morning.',
   },
   {
     id: 'lead-6',

@@ -15,7 +15,7 @@ export const Footer: React.FC = () => {
               <span>HVAC AI Receptionist</span>
             </div>
             <p className="text-slate-400 max-w-md leading-relaxed text-xs">
-              A specialized AI receptionist system engineered for residential and commercial heating and air conditioning contractors. Handles inquiries, troubleshoots symptoms, qualifies leads, and coordinates dispatch windows.
+              A specialized AI receptionist system engineered for residential and commercial heating and air conditioning contractors. Answers inquiries, understands reported HVAC issues, collects relevant customer information, and routes or escalates requests appropriately.
             </p>
             <div className="mt-4 flex items-center gap-2 text-[11px] text-amber-400 bg-slate-800/80 px-3 py-1.5 rounded border border-amber-500/20 max-w-fit">
               <Shield className="h-3.5 w-3.5" />

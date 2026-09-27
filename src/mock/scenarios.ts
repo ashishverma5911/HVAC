@@ -37,7 +37,7 @@ export const demoScenarios: DemoScenario[] = [
       },
       {
         sender: 'ai',
-        text: "Got it. That often indicates a capacitor or refrigerant issue. Let's get an on-duty technician dispatched. May I have your name and the service address in the Dallas area?",
+        text: "Got it. I have noted down those details for our service team. Let's get an on-duty technician scheduled to inspect the system. May I have your name and the service address in the Dallas area?",
       },
       {
         sender: 'customer',
@@ -145,9 +145,9 @@ export const demoScenarios: DemoScenario[] = [
   },
   {
     id: 'pricing-inquiry',
-    title: 'Diagnostic Fee & Pricing Inquiry',
+    title: 'Inspection Pricing & Policy Inquiry',
     category: 'pricing',
-    description: 'Customer asks for standard diagnostic fee and repair estimates before committing.',
+    description: 'Customer asks about contractor inspection pricing policy before scheduling (demonstrating contractor-configurable demo data).',
     badgeText: 'Pricing FAQ',
     detectedIntent: 'PRICING_INQUIRY',
     messages: [
@@ -157,17 +157,17 @@ export const demoScenarios: DemoScenario[] = [
       },
       {
         sender: 'customer',
-        text: 'How much do you guys charge to come out and look at a heat pump?',
+        text: 'How much does Summit HVAC charge to come out and inspect a heat pump?',
         extractedInfo: {
           serviceType: 'AC Repair',
-          problemDescription: 'Inquiring about diagnostic dispatch fee for heat pump.',
+          problemDescription: 'Inquiring about contractor inspection pricing policy for heat pump.',
           urgency: 'normal',
         },
         status: 'new',
       },
       {
         sender: 'ai',
-        text: "Our standard diagnostic trip fee across the Dallas-Fort Worth metro area is $89. The technician performs a complete system electrical and pressure inspection. If you approve the repair, that diagnostic fee is applied directly toward the repair cost.",
+        text: "Under Summit HVAC's demo configuration, our standard diagnostic inspection fee is $89, which is credited toward any repair work approved after the technician inspects the system. (Note: Inspection fees and pricing policies are fully configurable by each contractor).",
       },
       {
         sender: 'customer',
@@ -201,7 +201,7 @@ export const demoScenarios: DemoScenario[] = [
       phone: '(972) 555-0177',
       address: '3409 Oak Springs Blvd, Dallas, TX',
       serviceType: 'AC Repair',
-      problemDescription: 'Heat pump inspection. Diagnostic fee ($89) explained and accepted.',
+      problemDescription: 'Heat pump inspection request. Contractor-configured inspection pricing policy explained and accepted.',
       urgency: 'normal',
       preferredAppointmentTime: 'Tomorrow morning (9:00 AM – 11:00 AM)',
     },
@@ -309,7 +309,7 @@ export const demoScenarios: DemoScenario[] = [
       },
       {
         sender: 'ai',
-        text: 'We can definitely have a technician out to diagnose that compressor noise on Friday morning. May I collect your name, exact address in Garland, and a phone number?',
+        text: 'We can definitely have a technician out to inspect that compressor noise on Friday morning. May I collect your name, exact address in Garland, and a phone number?',
       },
       {
         sender: 'customer',
@@ -323,7 +323,7 @@ export const demoScenarios: DemoScenario[] = [
       },
       {
         sender: 'ai',
-        text: 'Thank you Michael. Your Friday morning diagnostic visit (9:00 AM – 12:00 PM) at 520 Castle Drive in Garland is reserved. We will text you tracking info when your technician is en route.',
+        text: 'Thank you Michael. Your Friday morning service visit (9:00 AM – 12:00 PM) at 520 Castle Drive in Garland is reserved. We will text you tracking info when your technician is en route.',
       },
     ],
     finalInfo: {
