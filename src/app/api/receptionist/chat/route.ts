@@ -12,6 +12,10 @@ import {
   calculateLeadStatus,
   mergeCustomerInfo,
   sanitizeExtractedString,
+  sanitizeCustomerName,
+  extractFallbackAddress,
+  extractFallbackAppointmentTime,
+  normalizeUrgency,
 } from '@/lib/ai/extractConversationData';
 import {
   ChatApiRequest,
@@ -111,6 +115,7 @@ export async function POST(req: NextRequest) {
                     properties: {
                       customerName: { type: 'string' },
                       phone: { type: 'string' },
+                      serviceAddress: { type: 'string' },
                       address: { type: 'string' },
                       serviceType: { type: 'string' },
                       reportedIssue: { type: 'string' },
@@ -195,33 +200,103 @@ export async function POST(req: NextRequest) {
     const reply = parsedResult.reply || "Thank you for reaching out to Summit HVAC. How may I assist you?";
     const detectedIntent = validateIntent(parsedResult.detectedIntent);
     const rawData = parsedResult.extractedData || {};
-    const extractedData: ExtractedCustomerData = {
-      customerName: sanitizeExtractedString(rawData.customerName),
-      phone: sanitizeExtractedString(rawData.phone),
-      address: sanitizeExtractedString(rawData.address),
-      serviceType: sanitizeExtractedString(rawData.serviceType),
-      reportedIssue: sanitizeExtractedString(rawData.reportedIssue),
-      urgency: rawData.urgency,
-      preferredAppointmentTime: sanitizeExtractedString(rawData.preferredAppointmentTime),
-      isEmergencySafetyHazard: Boolean(rawData.isEmergencySafetyHazard),
-      hasCustomerRequestedAppointment: Boolean(rawData.hasCustomerRequestedAppointment),
-    };
 
-    // 5. Compute lead status and merged customer information
+    // Combine all user utterances for deterministic fallback extraction and urgency verification
+    const allUserUtterances = messages
+      .filter((m) => m.role === 'user')
+      .map((m) => m.content)
+      .join(' ');
+
+    // Current accumulated customer info from previous turns
     const currentCustomerInfo: CustomerInfo = {
       name: currentData?.name || '',
       phone: currentData?.phone || '',
-      address: currentData?.address || '',
+      address: currentData?.address || currentData?.serviceAddress || '',
+      serviceAddress: currentData?.serviceAddress || currentData?.address || '',
       serviceType: currentData?.serviceType || '',
       problemDescription: currentData?.problemDescription || '',
       urgency: currentData?.urgency || 'normal',
       preferredAppointmentTime: currentData?.preferredAppointmentTime || '',
     };
 
+    // 1. Service Address Extraction: Model output, fallback from utterances, or preserved previous
+    let resolvedAddress = sanitizeExtractedString(rawData.serviceAddress || rawData.address);
+    if (!resolvedAddress) {
+      const fallbackAddr = extractFallbackAddress(allUserUtterances);
+      if (fallbackAddr) {
+        resolvedAddress = fallbackAddr;
+      } else if (currentCustomerInfo.serviceAddress || currentCustomerInfo.address) {
+        resolvedAddress = currentCustomerInfo.serviceAddress || currentCustomerInfo.address;
+      }
+    }
+
+    // 2. Customer Name: Reject ambiguous names like "John/Alex", preserve existing verified name
+    let resolvedName = sanitizeCustomerName(rawData.customerName);
+    if (!resolvedName && currentCustomerInfo.name) {
+      resolvedName = currentCustomerInfo.name;
+    }
+
+    // 3. Phone: Extract or preserve
+    let resolvedPhone = sanitizeExtractedString(rawData.phone);
+    if (!resolvedPhone && currentCustomerInfo.phone) {
+      resolvedPhone = currentCustomerInfo.phone;
+    }
+
+    // 4. Urgency: Default to normal unless explicit urgent request or safety hazard
+    const resolvedUrgency = normalizeUrgency(rawData.urgency, allUserUtterances);
+
+    // 5. Service Type: Infer from intent or preserve
+    let resolvedServiceType = sanitizeExtractedString(rawData.serviceType);
+    if (!resolvedServiceType && currentCustomerInfo.serviceType) {
+      resolvedServiceType = currentCustomerInfo.serviceType;
+    } else if (!resolvedServiceType) {
+      if (detectedIntent === 'AC_COOLING_FAILURE') resolvedServiceType = 'AC Repair';
+      else if (detectedIntent === 'HEATING_FAILURE') resolvedServiceType = 'Heating Repair';
+      else if (detectedIntent === 'MAINTENANCE') resolvedServiceType = 'HVAC Maintenance';
+      else if (detectedIntent === 'INSTALLATION') resolvedServiceType = 'AC Installation';
+      else if (detectedIntent === 'EMERGENCY') resolvedServiceType = 'Emergency Inspection';
+    }
+
+    // 6. Reported Issue: Keep distinct, preserve across turns
+    let resolvedIssue = sanitizeExtractedString(rawData.reportedIssue);
+    if (!resolvedIssue && currentCustomerInfo.problemDescription) {
+      resolvedIssue = currentCustomerInfo.problemDescription;
+    } else if (!resolvedIssue && detectedIntent === 'AC_COOLING_FAILURE') {
+      resolvedIssue = "AC isn't cooling";
+    }
+
+    // 7. Preferred Appointment Time: Model output, fallback schedule extractor, or preserved
+    let resolvedApptTime = sanitizeExtractedString(rawData.preferredAppointmentTime);
+    if (!resolvedApptTime) {
+      const fallbackAppt = extractFallbackAppointmentTime(allUserUtterances);
+      if (fallbackAppt) {
+        resolvedApptTime = fallbackAppt;
+      } else if (currentCustomerInfo.preferredAppointmentTime) {
+        resolvedApptTime = currentCustomerInfo.preferredAppointmentTime;
+      }
+    }
+
+    const hasAppointmentSignal =
+      Boolean(rawData.hasCustomerRequestedAppointment) ||
+      Boolean(resolvedApptTime) ||
+      /\b(come|schedule|appointment|book|technician|visit)\b/i.test(allUserUtterances);
+
+    const extractedData: ExtractedCustomerData = {
+      customerName: resolvedName || null,
+      phone: resolvedPhone || null,
+      serviceAddress: resolvedAddress || null,
+      address: resolvedAddress || null,
+      serviceType: resolvedServiceType || null,
+      reportedIssue: resolvedIssue || null,
+      urgency: resolvedUrgency,
+      preferredAppointmentTime: resolvedApptTime || null,
+      isEmergencySafetyHazard: Boolean(rawData.isEmergencySafetyHazard) || resolvedUrgency === 'emergency',
+      hasCustomerRequestedAppointment: hasAppointmentSignal,
+    };
+
     const updatedCustomerInfo = mergeCustomerInfo(currentCustomerInfo, extractedData);
-    const initialLeadStatus: LeadStatus = 'new';
     const computedLeadStatus = calculateLeadStatus(
-      initialLeadStatus,
+      'new',
       extractedData,
       updatedCustomerInfo
     );

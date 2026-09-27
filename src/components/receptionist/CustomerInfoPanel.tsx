@@ -20,10 +20,11 @@ interface CustomerInfoPanelProps {
 }
 
 export const CustomerInfoPanel: React.FC<CustomerInfoPanelProps> = ({ info }) => {
+  const addressVal = info.serviceAddress || info.address;
   const hasData = Boolean(
     info.name ||
       info.phone ||
-      info.address ||
+      addressVal ||
       info.serviceType ||
       info.problemDescription ||
       info.preferredAppointmentTime
@@ -89,7 +90,7 @@ export const CustomerInfoPanel: React.FC<CustomerInfoPanelProps> = ({ info }) =>
               <span>Service Address</span>
             </div>
             <p className="font-semibold text-slate-900">
-              {info.address || <span className="text-slate-400 italic">Listening...</span>}
+              {addressVal || <span className="text-slate-400 italic">Listening...</span>}
             </p>
           </div>
 

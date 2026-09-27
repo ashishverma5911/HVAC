@@ -31,6 +31,7 @@ export interface CustomerInfo {
   name: string;
   phone: string;
   address: string;
+  serviceAddress?: string;
   serviceType: string;
   problemDescription: string;
   urgency: UrgencyLevel;
@@ -49,6 +50,7 @@ export interface ExtractedCustomerData {
   customerName?: string | null;
   phone?: string | null;
   address?: string | null;
+  serviceAddress?: string | null;
   serviceType?: string | null;
   reportedIssue?: string | null;
   urgency?: UrgencyLevel | null;

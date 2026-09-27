@@ -14,6 +14,7 @@ const initialEmptyCustomerInfo: CustomerInfo = {
   name: '',
   phone: '',
   address: '',
+  serviceAddress: '',
   serviceType: '',
   problemDescription: '',
   urgency: 'normal',
