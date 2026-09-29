@@ -17,17 +17,25 @@ import {
 
 interface CustomerInfoPanelProps {
   info: CustomerInfo;
+  leadId?: string | null;
+  appointmentId?: string | null;
 }
 
-export const CustomerInfoPanel: React.FC<CustomerInfoPanelProps> = ({ info }) => {
-  const addressVal = info.serviceAddress || info.address;
+export const CustomerInfoPanel: React.FC<CustomerInfoPanelProps> = ({
+  info,
+  leadId,
+  appointmentId,
+}) => {
   const hasData = Boolean(
     info.name ||
       info.phone ||
-      addressVal ||
+      info.serviceAddress ||
+      info.city ||
+      info.cityOrArea ||
       info.serviceType ||
       info.problemDescription ||
-      info.preferredAppointmentTime
+      info.preferredAppointmentTime ||
+      leadId
   );
 
   const urgencyStyle = formatUrgency(info.urgency);
@@ -41,9 +49,16 @@ export const CustomerInfoPanel: React.FC<CustomerInfoPanelProps> = ({ info }) =>
             Customer Information Panel
           </h3>
         </div>
-        <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-          Real-time Extraction
-        </span>
+        <div className="flex items-center gap-1.5">
+          {leadId && (
+            <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+              {leadId}
+            </span>
+          )}
+          <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+            Real-time Extraction
+          </span>
+        </div>
       </div>
 
       {!hasData ? (
@@ -68,7 +83,7 @@ export const CustomerInfoPanel: React.FC<CustomerInfoPanelProps> = ({ info }) =>
                 <span>Customer Name</span>
               </div>
               <p className="font-semibold text-slate-900 truncate">
-                {info.name || <span className="text-slate-400 italic">Listening...</span>}
+                {info.name || <span className="text-slate-400 italic">Not provided</span>}
               </p>
             </div>
 
@@ -78,20 +93,32 @@ export const CustomerInfoPanel: React.FC<CustomerInfoPanelProps> = ({ info }) =>
                 <span>Phone Number</span>
               </div>
               <p className="font-semibold text-slate-900 truncate">
-                {info.phone || <span className="text-slate-400 italic">Listening...</span>}
+                {info.phone || <span className="text-slate-400 italic">Not provided</span>}
               </p>
             </div>
           </div>
 
-          {/* Address */}
-          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
-            <div className="flex items-center gap-1.5 text-slate-500 mb-1 text-[11px] font-medium">
-              <MapPin className="h-3.5 w-3.5 text-slate-400" />
-              <span>Service Address</span>
+          {/* Row 2: Service Address & City / Area */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+              <div className="flex items-center gap-1.5 text-slate-500 mb-1 text-[11px] font-medium">
+                <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                <span>Service Address</span>
+              </div>
+              <p className="font-semibold text-slate-900 truncate">
+                {info.serviceAddress || <span className="text-slate-400 italic">Not provided</span>}
+              </p>
             </div>
-            <p className="font-semibold text-slate-900">
-              {addressVal || <span className="text-slate-400 italic">Listening...</span>}
-            </p>
+
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
+              <div className="flex items-center gap-1.5 text-slate-500 mb-1 text-[11px] font-medium">
+                <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                <span>City / Area</span>
+              </div>
+              <p className="font-semibold text-slate-900 truncate">
+                {info.city || info.cityOrArea || <span className="text-slate-400 italic">Not provided</span>}
+              </p>
+            </div>
           </div>
 
           {/* Service & Urgency */}
@@ -102,7 +129,7 @@ export const CustomerInfoPanel: React.FC<CustomerInfoPanelProps> = ({ info }) =>
                 <span>Service Type</span>
               </div>
               <p className="font-semibold text-slate-900">
-                {info.serviceType || <span className="text-slate-400 italic">Listening...</span>}
+                {info.serviceType || <span className="text-slate-400 italic">Not provided</span>}
               </p>
             </div>
 

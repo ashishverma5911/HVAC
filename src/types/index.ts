@@ -32,6 +32,8 @@ export interface CustomerInfo {
   phone: string;
   address: string;
   serviceAddress?: string;
+  city?: string;
+  cityOrArea?: string;
   serviceType: string;
   problemDescription: string;
   urgency: UrgencyLevel;
@@ -51,12 +53,73 @@ export interface ExtractedCustomerData {
   phone?: string | null;
   address?: string | null;
   serviceAddress?: string | null;
+  city?: string | null;
+  cityOrArea?: string | null;
   serviceType?: string | null;
   reportedIssue?: string | null;
   urgency?: UrgencyLevel | null;
   preferredAppointmentTime?: string | null;
   isEmergencySafetyHazard?: boolean;
   hasCustomerRequestedAppointment?: boolean;
+}
+
+export type ActionStatus = 'pending' | 'success' | 'failed';
+
+export type ToolName =
+  | 'check_business_hours'
+  | 'check_service_area'
+  | 'create_lead'
+  | 'get_available_slots'
+  | 'request_appointment'
+  | 'transfer_to_human';
+
+export interface AgentAction {
+  id: string;
+  toolName: ToolName;
+  displayName: string;
+  status: ActionStatus;
+  input: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  error?: string;
+  timestamp: string;
+}
+
+export interface CheckBusinessHoursArgs {
+  day?: string;
+}
+
+export interface CheckServiceAreaArgs {
+  city?: string;
+  zip?: string;
+}
+
+export interface CreateLeadArgs {
+  customerName: string;
+  phone: string;
+  serviceAddress: string;
+  serviceType: string;
+  reportedIssue: string;
+  urgency: UrgencyLevel;
+}
+
+export interface GetAvailableSlotsArgs {
+  serviceType?: string;
+  urgency?: UrgencyLevel;
+  preferredDate?: string;
+}
+
+export interface RequestAppointmentArgs {
+  leadId: string;
+  preferredSlot: string;
+  customerName: string;
+  phone: string;
+  serviceAddress: string;
+}
+
+export interface TransferToHumanArgs {
+  reason: string;
+  urgency: UrgencyLevel;
+  summary: string;
 }
 
 export interface ChatHistoryMessage {
@@ -67,6 +130,8 @@ export interface ChatHistoryMessage {
 export interface ChatApiRequest {
   messages: ChatHistoryMessage[];
   currentData?: Partial<CustomerInfo>;
+  conversationId?: string;
+  leadId?: string;
 }
 
 export interface ChatApiResponse {
@@ -74,6 +139,9 @@ export interface ChatApiResponse {
   detectedIntent: AllowedIntent;
   extractedData: ExtractedCustomerData;
   leadStatus: LeadStatus;
+  leadId?: string;
+  appointmentId?: string;
+  executedActions?: AgentAction[];
 }
 
 export interface ConversationState {

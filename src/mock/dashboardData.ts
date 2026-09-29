@@ -61,7 +61,7 @@ export const mockRecentLeads: DashboardLead[] = [
     status: 'completed',
     timeReceived: '4 hours ago',
     phone: '(972) 555-0177',
-    notes: 'Inquired about standard inspection fee policy (demo configuration: $89). Routed to technician schedule for tomorrow morning.',
+    notes: 'Inquired about inspection policy. Routed to technician schedule for tomorrow morning.',
   },
   {
     id: 'lead-6',

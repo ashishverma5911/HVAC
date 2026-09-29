@@ -1,83 +1,84 @@
-# HVAC AI Receptionist (Stage 3 — Gemini AI Conversation Engine)
+# HVAC AI Receptionist (Phase 5 — Real-Time Browser Voice)
 
 A purpose-built AI receptionist system engineered for small and independent US heating, ventilation, and air conditioning (HVAC) contractors.
 
-The core product idea is an automated, 24/7 receptionist that answers inbound customer calls, understands reported HVAC issues, collects relevant information, and routes or escalates requests appropriately. It answers common business FAQs based on contractor configuration (such as service areas and business hours), captures verified caller information, qualifies leads, and records preferred appointment windows.
+The core product idea is an automated, 24/7 receptionist that answers inbound customer calls, understands reported HVAC issues, collects verified customer details, qualifies leads, schedules inspection windows, and routes or escalates requests appropriately. It operates under strict non-diagnosis and non-hallucination policies: it never fabricates prices or warranties, never provides hazardous technical repair advice, and immediately escalates life-safety emergencies.
 
 > [!IMPORTANT]
 > **Operational Boundary & Non-Diagnosis Policy**:
-> The AI receptionist is strictly designed for customer service intake, lead capture, and routing for human contractors and certified technicians. It **does NOT** perform professional HVAC diagnosis, repair decisions, safety determinations, or technical instructions. All inspection pricing, fees, and service policies displayed in the demo are fictional demonstration data configurable by each contractor.
+> The AI receptionist is strictly designed for customer service intake, lead capture, and routing for certified HVAC contractors. It **does NOT** perform professional HVAC diagnosis, repair decisions, safety determinations, or technical instructions. All pricing, availability, and policies are strictly dictated by contractor configuration.
 
 ---
 
-## 1. Project Overview
+## 1. Project Stages & Capabilities
 
-Small HVAC contractors frequently miss inbound customer calls while working on roofs, inside attics, or driving between job sites. Voicemails frequently go unanswered, and frustrated homeowners immediately call the next contractor on Google.
-
-**HVAC AI Receptionist** is being developed to ensure contractors never miss a customer inquiry, day or night. This repository contains the **Phase 1 (Project Foundation)**, **Phase 2 (Prototype UI)**, and **Phase 3 (Gemini 3.8 Flash AI Conversation Engine)** implementation.
+- **Phase 1 (Foundation)**: Next.js App Router, TypeScript, Tailwind CSS, domain types.
+- **Phase 2 (Prototype UI)**: Responsive contractor landing page, dispatch dashboard, and simulation panels.
+- **Phase 3 (Gemini 3.8 Flash Chat)**: Multi-turn conversational intelligence, safety escalation, entity extraction, and intent classification.
+- **Phase 4 (Agent Tools & Function Calling)**: Server-validated tool execution (`check_service_area`, `create_lead`, `get_available_slots`, `request_appointment`, `transfer_to_human`, `check_business_hours`), slot validation, and idempotency protection.
+- **Phase 5 (Real-Time Browser Voice)**: Real-time two-way browser voice conversation using **Google Gemini 3.8 Live** (`gemini-3.8-live`), Web Audio API, ephemeral security tokens, and instant barge-in/interruption.
+- **Phase 6 (Real US Telephone / Twilio Integration — Active)**: Inbound telephone calls via Twilio Voice Media Streams, real-time 8kHz G.711 μ-law audio transcoding, multi-call concurrency, HMAC-SHA1 webhook security, and live telephony dashboard.
 
 ---
 
-## 2. Current Functionality (Phase 1, Phase 2 & Phase 3)
+## 2. Phase 5: Real-Time Browser Voice Architecture
 
-- **Gemini 3.8 Flash Conversation Engine (Phase 3)**:
-  - Powered live by Google's official `@google/genai` SDK.
-  - Server-side API endpoint `POST /api/receptionist/chat` ensures zero client-side credential exposure.
-  - Multi-turn conversation memory preserving context across queries.
-  - Safety protocol: immediately detects natural gas odors, sparks, fire, smoke, or immediate hazards; prioritizes getting callers to a safe location outdoors; advises contacting appropriate local emergency services when immediate danger exists; provides zero technical repair advice; and supports contractor-configured emergency escalation procedures.
-  - Intent classification (`AC_COOLING_FAILURE`, `HEATING_FAILURE`, `MAINTENANCE`, `INSTALLATION`, `PRICING`, `APPOINTMENT`, `SERVICE_AREA`, `EMERGENCY`, `GENERAL_QUESTION`, `UNKNOWN`).
+```
+User Microphone
+      ↓ (Float32 -> Int16 Linear PCM 16kHz via Web Audio)
+Browser LiveVoiceManager
+      ↓ (WebSocket / sendRealtimeInput)
+Gemini Live API (gemini-3.8-live)
+      ↓ (Inline 24kHz Linear PCM Audio + Transcripts + ToolCalls)
+Browser Web Audio Playback Queue + Live Tool Dispatcher
+      ├── Audio Playback (Speaker, with Barge-in discard on interruption)
+      ├── Live Transcript Updates (Customer & Receptionist)
+      └── Tool Execution (POST /api/receptionist/tools -> executeAgentTool)
+            ↓ (sendToolResponse)
+         Gemini continues speaking
+```
 
-- **Landing & Value Proposition Page**:
-  - High-trust hero section tailored specifically for US HVAC contractors.
-  - Zero hype, unsupported revenue claims, or fake testimonials.
-  - 4 capability pillars: Answers Customer Questions, Captures Complete Leads, Handles After-Hours Inquiries, and Escalates When Human Help Is Needed.
-  - Explanation of the 3-step call flow: Inbound Greeting &rarr; Issue Intake & Routing &rarr; Action & Dispatch.
+### Security & Ephemeral Token Authentication
+- **Zero API Key Leakage**: Browser-side code never receives, stores, or transmits `GEMINI_API_KEY`.
+- **Ephemeral Token Endpoint**: `POST /api/receptionist/live-token` runs strictly server-side using the official `@google/genai` SDK (`v1alpha`).
+- **Locked Constraints**:
+  - Model: `gemini-3.8-live` (or `GEMINI_LIVE_MODEL`)
+  - Modalities: `[Modality.AUDIO]`
+  - Voice: `Aoede` (natural conversational voice)
+  - System Instructions: Summit HVAC system prompt (safety rules, no fake pricing)
+  - Tools: Whitelisted function declarations (`RECEPTIONIST_TOOLS`)
+  - Transcriptions: Input & Output audio transcription enabled
+- The server generates a single-use token (`auth_tokens/...`) that expires automatically.
 
-- **Interactive AI Receptionist Live Simulator**:
-  - Dedicated simulation console for fictional Dallas contractor **Summit HVAC**.
-  - Visual status indicator: `Gemini 3.8 Flash Active`.
-  - Start Conversation and End Conversation controls.
-  - Clear **Prototype Mode** banners explaining that audio voice telephony will follow in Phase 4.
-  - Conversation Transcript Area with real-time thinking indicator and clear visual differentiation between AI responses, customer messages, and life-safety alerts.
-  - **Quick-Start Preset Inquiries**: Clicking any scenario sends its opening question directly to Gemini 3.8 Flash.
-  - **Freeform Input**: Type any realistic homeowner inquiry into the console.
+### Web Audio Pipeline & Interruption (Barge-in)
+- **Input Capture**: `navigator.mediaDevices.getUserMedia` captures microphone audio with echo cancellation, noise suppression, and auto gain control. Audio is converted to 16-bit mono Linear PCM downsampled to 16000Hz and streamed via WebSocket (`session.sendRealtimeInput`).
+- **Native Audio Playback**: 24000Hz PCM chunks from Gemini Live are queued seamlessly in an `AudioContext` buffer queue.
+- **Barge-In / Interruption**: When Gemini detects user speech while speaking, it issues `serverContent.interrupted`. The client immediately cancels all scheduled audio buffers, flushes the audio queue, and switches the UI state back to listening.
 
-- **Real-Time Customer Information Panel**:
-  - Displays empty state (`Awaiting Customer Details`) until call begins.
-  - Dynamically populated by Gemini entity extraction:
-    - Customer Name
-    - Call-Back Phone Number
-    - Physical Service Address
-    - Service Type (AC Repair, Maintenance, Emergency Inspection, etc.)
-    - Problem Description
-    - Urgency Level (Normal, Urgent, Emergency)
-    - Preferred Appointment Window
-
-- **Lead Status Pipeline Stepper**:
-  - Computed in application logic: `New` &rarr; `Qualified` &rarr; `Appointment Requested` &rarr; `Transferred` &rarr; `Completed`.
-
-- **Business Information Panel**:
-  - Displays Summit HVAC company profile (Dallas, TX; Dallas, Plano, Irving, Garland service areas; Mon–Fri 8 AM–6 PM; 24/7 Emergency Service).
-
-- **Contractor Dashboard Preview (`/dashboard`)**:
-  - High-level KPIs: Calls Today (24), Leads (8), Appointments (4), Urgent Requests (2).
-  - Searchable and filterable Recent Leads table with realistic contractor records (John Smith, Sarah Johnson, Robert Martinez, Karen Brooks, etc.).
-  - Inspection detail modal showing call notes and reported issues recorded by the AI.
+### Tool Execution during Voice
+When Gemini Live calls an agent tool during a voice conversation:
+1. `LiveVoiceManager` intercepts the `toolCall` message.
+2. Dispatches the call to `POST /api/receptionist/tools`.
+3. The server validates and executes `executeAgentTool` against local mock data.
+4. The result is returned via `session.sendToolResponse({ functionResponses })` and local UI panels (Customer Info, Lead Status, Agent Actions) update in real time.
+5. Gemini continues speaking naturally with the verified tool output.
 
 ---
 
 ## 3. Environment Variables
 
 Create `.env.local` in the project root:
+
 ```env
-# Google Gemini API Key (Required for live conversation)
+# Google Gemini API Key (Required for conversation & voice)
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# Gemini Model ID (Configurable; defaults to gemini-3.8-flash)
+# Gemini Live Model ID (Default: gemini-3.8-live)
+GEMINI_LIVE_MODEL=gemini-3.8-live
+
+# Gemini Chat Model ID (Default: gemini-3.8-flash)
 GEMINI_MODEL=gemini-3.8-flash
 ```
-
-A template is provided in `.env.example`.
 
 ---
 
@@ -86,71 +87,92 @@ A template is provided in `.env.example`.
 ### Prerequisites
 - Node.js `v20+` or `v24+` (tested on Node v24.21.0)
 - `pnpm` (recommended), `npm`, or `yarn`
+- A browser supporting Web Audio and `getUserMedia` (Chrome, Edge, Firefox, Safari)
 
 ### Installation & Execution
 ```bash
 # 1. Install dependencies
 pnpm install
 
-# 2. Type-check the project
+# 2. Run automated test suites
+pnpm dlx tsx tests/phase5_voice_suite.ts
+pnpm dlx tsx tests/phase4_regression_suite.ts
+
+# 3. Type-check the project
 pnpm tsc --noEmit
 
-# 3. Build for production
+# 4. Build for production
 pnpm build
 
-# 4. Start local development server
+# 5. Start local development server
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser to interact with the Gemini AI receptionist, or [http://localhost:3000/dashboard](http://localhost:3000/dashboard) to view the contractor dashboard preview.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 5. What is Intentionally NOT Implemented Yet
+## 5. How to Use Browser Voice
 
-To maintain strict project boundaries for Phase 3, the following systems have **intentionally not been added**:
-- ❌ Live WebRTC / browser audio streaming microphone (UI mock provided; real voice in Phase 4)
-- ❌ Twilio, Vapi, Retell, or real US phone number provisioning
-- ❌ Supabase or production PostgreSQL database
-- ❌ User authentication or multi-tenant accounts
-- ❌ Stripe or billing/subscription payments
-- ❌ Google Calendar or CRM integrations (ServiceTitan, Housecall Pro)
-- ❌ Third-party analytics or paid tracking SDKs
+1. Navigate to the **Interactive AI Receptionist Simulator** on the home page.
+2. Select the **Real-Time Voice (Gemini 3.8 Live)** tab.
+3. Click **Start Voice Conversation**.
+4. Allow browser microphone access when prompted.
+5. Speak naturally into your microphone (e.g., *"Hi, my AC isn't cooling. I'm at 456 Oak Street in Plano."*).
+6. Listen to Gemini 3.8 Live speak back to you with natural audio.
+7. Test interrupting: speak while Gemini is talking &mdash; speech stops instantly.
+8. Click **Mute Mic** or **End Voice Call** at any time to release microphone hardware tracks.
 
----
-
-## 6. Planned Next Development Stages
-
-- **Phase 4 — Voice & Telephony Hookup**:
-  - Real-time speech-to-text (STT) and low-latency voice synthesis (TTS).
-  - Telephony bridge (SIP / Twilio / Vapi) to route real US toll-free and local phone numbers directly to the receptionist.
-
-- **Phase 5 — Database & Multi-Tenant Contractor SaaS**:
-  - Persistent database for contractor profiles, business hours, service zones, and call records.
-  - Secure authentication for contractor owners and office dispatchers.
-  - Webhook dispatch into contractor CRMs (ServiceTitan, Jobber, Housecall Pro).
+*(You can also switch to the **Text Chat & Presets** tab at any time to test the simulator via typed inputs or pre-configured scenarios).*
 
 ---
 
-## 7. TODO & Roadmap
+## 6. How to Run Phase 6 Telephony Bridge
 
-- [x] **Stage 1**: Project foundation with Next.js App Router, TypeScript, and Tailwind CSS.
-- [x] **Stage 1**: Decoupled domain types (`CustomerInfo`, `LeadStatus`, `BusinessProfile`, `ConversationMessage`).
-- [x] **Stage 2**: Responsive landing page with contractor-focused headline, subheadline, and CTAs.
-- [x] **Stage 2**: Trust section with 4 pillars and workflow explanation.
-- [x] **Stage 2**: Interactive AI Receptionist simulator for Summit HVAC.
-- [x] **Stage 2**: 6 realistic HVAC scenarios (AC not cooling, gas emergency, pricing, tune-up, service area, after-hours).
-- [x] **Stage 2**: Customer Information Panel with empty state and real-time extraction simulation.
-- [x] **Stage 2**: Lead status stepper (`New` &rarr; `Qualified` &rarr; `Appointment Requested` &rarr; `Transferred` &rarr; `Completed`).
-- [x] **Stage 2**: Summit HVAC business details panel.
-- [x] **Stage 2**: Contractor Dashboard preview route (`/dashboard`) with KPI metrics and recent leads table.
-- [x] **Stage 3**: Official Google GenAI SDK (`@google/genai`) integration.
-- [x] **Stage 3**: Configure Gemini 3.8 Flash (`gemini-3.8-flash`) as the default model.
-- [x] **Stage 3**: Server-side API route `POST /api/receptionist/chat`.
-- [x] **Stage 3**: Summit HVAC system instruction with non-diagnosis and safety escalation.
-- [x] **Stage 3**: Real-time customer data extraction & intent classification.
-- [x] **Stage 3**: Context-aware multi-turn conversation memory.
-- [ ] **Stage 4**: Add real-time voice streaming and telephony webhook endpoints.
-- [ ] **Stage 4**: SMS notifications for customer appointment confirmations.
-- [ ] **Stage 5**: Multi-tenant database and contractor onboarding flow.
-- [ ] **Stage 5**: Contractor CRM calendar synchronization.
+### Dual-Endpoint Architecture:
+1. **Next.js Web / API Server** (Port `3000`): Serves the web UI and handles the inbound Twilio Voice Webhook (`POST /api/telephony/twilio/voice`).
+2. **Telephony Bridge Server** (Port `8080`): Handles bi-directional Twilio Media Streams (`wss://.../api/telephony/twilio-stream`) connected to Gemini 3.8 Live.
+
+### Local Development with Separate Tunnels:
+To expose both services locally to Twilio without requiring a reverse proxy:
+
+1. **Expose Next.js Webhook (Port 3000)**:
+   ```bash
+   ngrok http 3000
+   # e.g. https://app-tunnel.ngrok-free.app
+   ```
+2. **Expose Telephony WebSocket Server (Port 8080)**:
+   ```bash
+   ngrok http 8080
+   # e.g. https://ws-tunnel.ngrok-free.app
+   ```
+3. **Configure `.env.local`**:
+   ```env
+   PUBLIC_HTTP_BASE_URL="https://app-tunnel.ngrok-free.app"
+   PUBLIC_WS_BASE_URL="https://ws-tunnel.ngrok-free.app"
+   TELEPHONY_PORT=8080
+   TWILIO_AUTH_TOKEN="your_twilio_auth_token"
+   ```
+4. **Start Both Servers**:
+   ```bash
+   # Terminal 1: Next.js dev server
+   npm run dev
+
+   # Terminal 2: Standalone Telephony WebSocket server
+   npm run telephony
+   ```
+5. **Configure Twilio Console**:
+   - In Twilio Console > Phone Numbers > Active Numbers > Voice:
+   - Set Webhook: `POST https://app-tunnel.ngrok-free.app/api/telephony/twilio/voice`
+   - When called, the webhook responds with TwiML directing caller audio to `wss://ws-tunnel.ngrok-free.app/api/telephony/twilio-stream`.
+
+---
+
+## 7. What is Intentionally Deferred (Future Phases)
+
+To maintain focus and avoid scope creep, the following remain deferred:
+- ❌ Production billing or Stripe subscriptions
+- ❌ Supabase or production PostgreSQL multi-tenant architecture
+- ❌ Automatic outbound marketing or cold call campaigns
+- ❌ Automated bulk SMS marketing
+- ❌ Carrier number porting

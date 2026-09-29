@@ -9,6 +9,8 @@ interface TranscriptAreaProps {
   isCallActive: boolean;
   detectedIntent?: string;
   isThinking?: boolean;
+  engineName?: string;
+  voiceState?: string;
 }
 
 export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
@@ -16,6 +18,8 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
   isCallActive,
   detectedIntent,
   isThinking = false,
+  engineName = 'Gemini 3.8 Flash',
+  voiceState,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -154,6 +158,8 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
                 ? 'bg-amber-400 animate-ping'
                 : isCallActive
                 ? 'bg-emerald-400 animate-pulse'
+                : voiceState === 'ENDED'
+                ? 'bg-slate-600'
                 : 'bg-slate-500'
             }`}
           />
@@ -162,11 +168,13 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
               ? 'AI Receptionist thinking...'
               : isCallActive
               ? 'Conversation Active'
+              : voiceState === 'ENDED'
+              ? 'Call Ended'
               : 'Call Idle'}
           </span>
         </div>
         <span className="text-slate-400 font-mono text-[10px]">
-          Engine: Gemini 3.8 Flash
+          Engine: {engineName}
         </span>
       </div>
     </div>

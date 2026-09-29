@@ -33,6 +33,281 @@ export function validateIntent(rawIntent: unknown): AllowedIntent {
 }
 
 /**
+ * Infers customer intent using validated intent, conversation text, and executed tools.
+ */
+export function inferIntent(
+  rawIntent: unknown,
+  allUtterances: string,
+  executedToolNames: string[] = []
+): AllowedIntent {
+  const lower = allUtterances.toLowerCase();
+  const latestUtterance = allUtterances.split('\n').pop()?.toLowerCase() || lower;
+
+  // 1. Safety Emergency
+  if (
+    lower.includes('gas') ||
+    lower.includes('smoke') ||
+    lower.includes('fire') ||
+    lower.includes('spark')
+  ) {
+    return 'EMERGENCY';
+  }
+
+  // 2. Explicit Appointment / Booking Request
+  const isAskingAppointment =
+    /\b(come|schedule|appointment|book|slot|slots|tomorrow|today|available times|when can|visit)\b/i.test(
+      latestUtterance
+    );
+
+  if (isAskingAppointment && !/\b(cooling|warm air|furnace|broken|stopped|leak)\b/i.test(latestUtterance)) {
+    return 'APPOINTMENT';
+  }
+
+  // 3. Equipment Failures (Primary service inquiries)
+  if (
+    lower.includes('ac') ||
+    lower.includes('cooling') ||
+    lower.includes('cool') ||
+    lower.includes('warm air') ||
+    lower.includes('air condition')
+  ) {
+    return 'AC_COOLING_FAILURE';
+  }
+
+  if (lower.includes('heat') || lower.includes('furnace') || lower.includes('heater')) {
+    return 'HEATING_FAILURE';
+  }
+
+  // 4. If latest was appointment request (even if issue was mentioned earlier)
+  if (isAskingAppointment) {
+    return 'APPOINTMENT';
+  }
+
+  // 5. Maintenance / Installation
+  if (
+    lower.includes('maintenance') ||
+    lower.includes('tune-up') ||
+    lower.includes('tune up') ||
+    lower.includes('seasonal check')
+  ) {
+    return 'MAINTENANCE';
+  }
+
+  if (lower.includes('install') || lower.includes('replacement') || lower.includes('new system')) {
+    return 'INSTALLATION';
+  }
+
+  // 6. Pricing
+  if (
+    lower.includes('cost') ||
+    lower.includes('price') ||
+    lower.includes('pricing') ||
+    lower.includes('quote') ||
+    lower.includes('diagnostic fee') ||
+    lower.includes('charge')
+  ) {
+    return 'PRICING';
+  }
+
+  // 7. Service Area (when asking specifically about area coverage)
+  if (
+    lower.includes('service area') ||
+    lower.includes('do you serve') ||
+    lower.includes('do you cover') ||
+    lower.includes('service dallas') ||
+    lower.includes('service plano') ||
+    lower.includes('service irving')
+  ) {
+    return 'SERVICE_AREA';
+  }
+
+  const valid = validateIntent(rawIntent);
+  if (valid !== 'UNKNOWN') return valid;
+
+  return 'GENERAL_QUESTION';
+}
+
+const DISALLOWED_NAME_FIRST_WORDS = new Set([
+  'in', 'at', 'from', 'calling', 'located', 'living', 'live', 'having', 'experiencing',
+  'wondering', 'looking', 'interested', 'asking', 'trying', 'reaching', 'hoping',
+  'currently', 'just', 'on', 'with', 'here', 'there', 'out', 'near', 'not', 'my',
+  'our', 'a', 'an', 'the', 'this', 'that', 'need', 'needs', 'want', 'wants',
+  'seeing', 'checking', 'getting', 'reporting', 'telling', 'saying', 'speaking',
+  'homeowner', 'customer', 'caller', 'resident', 'someone', 'me', 'ready',
+  'fine', 'good', 'okay', 'ok', 'sure', 'sorry', 'happy', 'afraid', 'glad',
+  'yes', 'no'
+]);
+
+const DISALLOWED_NAME_WORDS = new Set([
+  'street', 'st', 'avenue', 'ave', 'road', 'rd', 'drive', 'dr', 'lane', 'ln',
+  'boulevard', 'blvd', 'way', 'court', 'ct', 'circle', 'cir', 'parkway', 'pkwy',
+  'highway', 'hwy', 'houston', 'dallas', 'plano', 'irving', 'garland', 'richardson',
+  'carrollton', 'austin', 'fort', 'worth', 'texas', 'tx', 'frisco', 'allen',
+  'mckinney', 'arlington', 'denton', 'ac', 'hvac', 'heat', 'heating', 'cool',
+  'cooling', 'unit', 'system', 'furnace', 'broken', 'repair', 'leak', 'leaking',
+  'smoke', 'fire', 'gas', 'service', 'appointment', 'schedule', 'today', 'tomorrow',
+  'morning', 'afternoon', 'evening', 'night', 'week', 'hour', 'hours', 'time',
+  'person', 'human', 'dispatcher', 'manager', 'technician'
+]);
+
+/**
+ * Validates whether a candidate string is an authentic customer person name.
+ * Strictly rejects location phrases ("in Houston"), address snippets ("at 456 Oak Street"),
+ * verbs, equipment issues, and prepositions.
+ */
+export function isValidCustomerName(name: string): boolean {
+  if (!name || typeof name !== 'string') return false;
+  const trimmed = name.trim();
+  if (trimmed.length < 2 || trimmed.length > 40) return false;
+  if (isAmbiguousName(trimmed)) return false;
+
+  // Cannot contain numbers
+  if (/\d/.test(trimmed)) return false;
+
+  const words = trimmed.split(/\s+/).map((w) => w.toLowerCase().replace(/[^a-z]/g, ''));
+  if (words.length === 0 || words.length > 3) return false;
+
+  if (DISALLOWED_NAME_FIRST_WORDS.has(words[0])) return false;
+
+  for (const w of words) {
+    if (w.length === 0) return false;
+    if (DISALLOWED_NAME_WORDS.has(w)) return false;
+    if (DISALLOWED_NAME_FIRST_WORDS.has(w)) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Deterministic fallback extractor for customer names from utterances.
+ * Matches: "name Alex", "My name is Alex", "My name's Alex", "Name: Alex", "I'm Alex",
+ * "This is Alex Miller", "Alex here", "John Smith speaking".
+ * Strictly rejects location phrases like "I'm in Houston" or "I'm at 456 Oak Street".
+ * Stops matching before delimiters like "address", "phone", "city", etc.
+ */
+export function extractFallbackName(text: string): string | null {
+  if (!text || typeof text !== 'string') return null;
+
+  const delimiterWords = 'address|phone|number|city|street|service|problem|issue|at|in|my|and|is|live';
+  const patterns = [
+    new RegExp(`(?:my\\s+name(?:'s|\\s+is)?|name(?:\\s+is|:)?|call\\s+me|this\\s+is|I'm|I\\s+am)\\s+([A-Za-z]+)(?:\\s+(?!${delimiterWords}\\b)([A-Za-z]+))?`, 'i'),
+    /\b([A-Za-z]+(?:\s+[A-Za-z]+)?)\s+(?:here|speaking)\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const first = match[1]?.trim();
+      const second = match[2]?.trim();
+
+      // Try full two-word candidate first if both valid
+      if (first && second) {
+        const fullCandidate = `${first} ${second}`;
+        if (isValidCustomerName(fullCandidate)) {
+          return fullCandidate;
+        }
+      }
+
+      // Fallback to single first name if valid
+      if (first && isValidCustomerName(first)) {
+        return first;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Deterministic fallback extractor for phone numbers.
+ * Matches: 214-555-0199, (214) 555-0199, 214.555.0199, etc.
+ */
+export function extractFallbackPhone(text: string): string | null {
+  if (!text || typeof text !== 'string') return null;
+  const pattern = /(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/;
+  const match = text.match(pattern);
+  if (match) {
+    return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  return null;
+}
+
+/**
+ * Deterministic fallback extractor for service types.
+ */
+export function extractFallbackServiceType(text: string): string | null {
+  if (!text || typeof text !== 'string') return null;
+  const lower = text.toLowerCase();
+  if (
+    lower.includes('ac') ||
+    lower.includes('cooling') ||
+    lower.includes('cool') ||
+    lower.includes('air condition')
+  ) {
+    if (lower.includes('install') || lower.includes('replace')) return 'AC Installation';
+    return 'AC Repair';
+  }
+  if (lower.includes('heat') || lower.includes('furnace') || lower.includes('heater')) {
+    return 'Heating Repair';
+  }
+  if (lower.includes('maintenance') || lower.includes('tune-up') || lower.includes('tune up')) {
+    return 'HVAC Maintenance';
+  }
+  if (
+    lower.includes('gas') ||
+    lower.includes('spark') ||
+    lower.includes('smoke') ||
+    lower.includes('fire')
+  ) {
+    return 'Emergency Inspection';
+  }
+  return null;
+}
+
+/**
+ * Deterministic fallback extractor for reported equipment issues.
+ */
+export function extractFallbackReportedIssue(text: string): string | null {
+  if (!text || typeof text !== 'string') return null;
+  const lower = text.toLowerCase();
+  if (
+    lower.includes("isn't cooling") ||
+    lower.includes('not cooling') ||
+    lower.includes('stopped cooling')
+  ) {
+    return "AC isn't cooling";
+  }
+  if (lower.includes('blowing warm air') || lower.includes('warm air')) {
+    return 'AC blowing warm air';
+  }
+  if (
+    lower.includes('stopped working') ||
+    lower.includes('not working') ||
+    lower.includes("won't turn on")
+  ) {
+    return 'System not working';
+  }
+  if (
+    lower.includes('making noise') ||
+    lower.includes('rattling') ||
+    lower.includes('squealing') ||
+    lower.includes('buzzing')
+  ) {
+    return 'Unusual noise from unit';
+  }
+  if (lower.includes('leaking') || lower.includes('water leak')) {
+    return 'Water leaking from system';
+  }
+  if (lower.includes('gas') || lower.includes('rotten egg') || lower.includes('sulfur')) {
+    return 'Smell of gas near equipment';
+  }
+  if (lower.includes('maintenance') || lower.includes('tune-up')) {
+    return 'Seasonal maintenance tune-up';
+  }
+  return null;
+}
+
+/**
  * Sanitizes extracted strings to prevent literal "null", "undefined", or "none" values from polluting state.
  */
 export function sanitizeExtractedString(val: unknown): string {
@@ -66,11 +341,12 @@ export function isAmbiguousName(name: string): boolean {
 }
 
 /**
- * Validates and sanitizes a customer name. Returns empty string if ambiguous or invalid.
+ * Validates and sanitizes a customer name. Returns empty string if ambiguous, invalid,
+ * or contains location / preposition phrases (e.g. "in Houston", "Plano").
  */
 export function sanitizeCustomerName(rawName: unknown): string {
   const str = sanitizeExtractedString(rawName);
-  if (!str || isAmbiguousName(str)) {
+  if (!str || !isValidCustomerName(str)) {
     return '';
   }
   return str;
@@ -84,22 +360,28 @@ export function sanitizeCustomerName(rawName: unknown): string {
 export function extractFallbackAddress(text: string): string | null {
   if (!text || typeof text !== 'string') return null;
 
-  // Pattern 1: Explicit address indicators ("I'm at 456 Oak Street in Plano", "Address: 456 Oak Street, Plano")
-  const explicitPattern =
-    /(?:I'm at|I am at|located at|address is|address:)\s+([0-9]+\s+[A-Za-z0-9\s.,]+?(?:in\s+[A-Za-z]+|[A-Za-z]+,\s*[A-Z]{2}|[A-Za-z]+))\b/i;
-  const match1 = text.match(explicitPattern);
-  if (match1 && match1[1]) {
-    let addr = match1[1].trim().replace(/\s+in\s+/i, ', ');
-    addr = addr.replace(/[.,;]+$/, '').trim();
-    if (addr.length > 5) return addr;
+  // Pattern: Street number + street name + suffix (Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Way|Court|Ct|Circle|Cir) + optional (in City | , City)
+  const pattern =
+    /\b(\d{1,5}\s+[A-Za-z0-9\s.]+?\b(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Way|Court|Ct|Circle|Cir)\b)(?:[,\s]+(?:in\s+)?([A-Za-z]+))?/i;
+
+  const match = text.match(pattern);
+  if (match && match[1]) {
+    const street = match[1].trim();
+    const city = match[2]?.trim();
+
+    // Verify city isn't an English conjunction or preposition
+    if (city && !/^(?:and|the|my|our|with|for|but|or|so|then|please|tx|texas)$/i.test(city)) {
+      return `${street}, ${city}`;
+    }
+    return street;
   }
 
-  // Pattern 2: Street suffix pattern ("456 Oak Street in Plano" or "456 Oak Street, Plano")
-  const streetPattern =
-    /\b(\d{1,5}\s+[A-Za-z0-9\s]+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Way|Court|Ct|Circle|Cir)\b(?:[,\s]+(?:in\s+)?[A-Za-z]+)?)/i;
-  const match2 = text.match(streetPattern);
-  if (match2 && match2[1]) {
-    let addr = match2[1].trim().replace(/\s+in\s+/i, ', ');
+  // Fallback: Explicit address patterns like "Address: 456 Oak Street, Plano"
+  const explicitPattern =
+    /(?:address is|address:)\s*([0-9]+\s+[A-Za-z0-9\s.,]+)/i;
+  const matchExplicit = text.match(explicitPattern);
+  if (matchExplicit && matchExplicit[1]) {
+    let addr = matchExplicit[1].trim().replace(/\s+in\s+/i, ', ');
     addr = addr.replace(/[.,;]+$/, '').trim();
     if (addr.length > 5) return addr;
   }
@@ -108,17 +390,68 @@ export function extractFallbackAddress(text: string): string | null {
 }
 
 /**
+ * Deterministic fallback extractor for bare cities/regions mentioned without a street address.
+ * E.g. "I'm in Houston" -> "Houston", "calling from Plano" -> "Plano", "456 Oak Street in Plano" -> "Plano"
+ */
+export function extractFallbackCity(text: string): string | null {
+  if (!text || typeof text !== 'string') return null;
+
+  // 1. Direct scan for known service cities & major metro areas
+  const knownCities = [
+    'Dallas', 'Plano', 'Irving', 'Garland', 'Richardson', 'Carrollton',
+    'Houston', 'Austin', 'Fort Worth', 'Arlington', 'Frisco', 'Allen', 'McKinney'
+  ];
+
+  for (const city of knownCities) {
+    const regex = new RegExp(`\\b${city}\\b`, 'i');
+    if (regex.test(text)) {
+      return city;
+    }
+  }
+
+  // 2. Pattern: "in [City]", "from [City]", "near [City]", "calling from [City]"
+  const pattern = /\b(?:in|from|near|at|calling from)\s+([A-Za-z]+)\b/i;
+  const match = text.match(pattern);
+  if (match && match[1]) {
+    const city = match[1].trim();
+    if (!/^(?:and|the|my|our|with|for|but|or|so|then|please)$/i.test(city)) {
+      return city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
+    }
+  }
+
+  return null;
+}
+
+/**
  * Deterministic fallback extractor for appointment schedules requested by caller.
- * E.g., "Can someone come tomorrow?", "tomorrow morning", "Tuesday afternoon"
+ * E.g., "Can someone come tomorrow?", "tomorrow morning", "Tuesday afternoon", "3 PM works for me", "3 PM"
  */
 export function extractFallbackAppointmentTime(text: string): string | null {
   if (!text || typeof text !== 'string') return null;
-  const pattern =
-    /\b(tomorrow(?:\s+(?:morning|afternoon|evening))?|today(?:\s+(?:morning|afternoon|evening))?|this\s+(?:morning|afternoon|evening)|next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening))?)\b/i;
-  const match = text.match(pattern);
-  if (match && match[1]) {
-    return match[1].trim();
+
+  // 1. Time + day or specific slot (e.g. "Tuesday 3:00 PM", "tomorrow at 3 PM")
+  const specificSlotPattern =
+    /\b((?:Monday|Tuesday|Wednesday|Thursday|Friday|tomorrow|today)\s+(?:at\s+)?(?:[1-9]|1[0-2])(?::[0-5][0-9])?\s*(?:am|pm))\b/i;
+  const matchSpecific = text.match(specificSlotPattern);
+  if (matchSpecific && matchSpecific[1]) {
+    return matchSpecific[1].trim();
   }
+
+  // 2. Relative day with window (e.g. "tomorrow morning", "tomorrow", "today", "Tuesday afternoon")
+  const relativePattern =
+    /\b(tomorrow(?:\s+(?:morning|afternoon|evening))?|today(?:\s+(?:morning|afternoon|evening))?|this\s+(?:morning|afternoon|evening)|next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening))?)\b/i;
+  const matchRelative = text.match(relativePattern);
+  if (matchRelative && matchRelative[1]) {
+    return matchRelative[1].trim();
+  }
+
+  // 3. Isolated time specification like "3 PM", "3:00 PM", "10 AM"
+  const timePattern = /\b([1-9]|1[0-2])(?::[0-5][0-9])?\s*(?:am|pm)\b/i;
+  const matchTime = text.match(timePattern);
+  if (matchTime && matchTime[0]) {
+    return matchTime[0].trim();
+  }
+
   return null;
 }
 
@@ -234,11 +567,21 @@ export function mergeCustomerInfo(
     merged.phone = validPhone;
   }
 
-  // 3. Service Address (support both serviceAddress and address)
+  // 3. Service Address (strictly requires street evidence, never bare city)
   const incomingAddress = sanitizeExtractedString(extracted.serviceAddress || extracted.address);
   if (incomingAddress.length > 2) {
-    merged.address = incomingAddress;
-    merged.serviceAddress = incomingAddress;
+    const incomingHasStreet = /\d+\s+[A-Za-z]/.test(incomingAddress);
+    if (incomingHasStreet) {
+      merged.address = incomingAddress;
+      merged.serviceAddress = incomingAddress;
+    }
+  }
+
+  // 3b. City / Area
+  const incomingCity = sanitizeExtractedString(extracted.city || extracted.cityOrArea);
+  if (incomingCity.length > 1) {
+    merged.city = incomingCity;
+    merged.cityOrArea = incomingCity;
   }
 
   // 4. Service Type
@@ -274,4 +617,50 @@ export function mergeCustomerInfo(
   }
 
   return merged;
+}
+
+/**
+ * Extracts structured customer info and inferred intent directly from conversation utterances.
+ * Can be called synchronously or as speech chunks are finalized in real-time voice sessions.
+ */
+export function extractStructuredCustomerData(
+  allUtterances: string,
+  existingInfo?: Partial<CustomerInfo>,
+  currentLeadStatus: LeadStatus = 'new'
+): {
+  customerInfo: CustomerInfo;
+  leadStatus: LeadStatus;
+  intent: AllowedIntent;
+} {
+  const current: CustomerInfo = {
+    name: existingInfo?.name || '',
+    phone: existingInfo?.phone || '',
+    address: existingInfo?.address || '',
+    serviceAddress: existingInfo?.serviceAddress || '',
+    city: existingInfo?.city || '',
+    cityOrArea: existingInfo?.cityOrArea || '',
+    serviceType: existingInfo?.serviceType || '',
+    problemDescription: existingInfo?.problemDescription || '',
+    urgency: existingInfo?.urgency || 'normal',
+    preferredAppointmentTime: existingInfo?.preferredAppointmentTime || '',
+  };
+
+  const extracted: ExtractedCustomerData = {
+    customerName: extractFallbackName(allUtterances) || current.name || null,
+    phone: extractFallbackPhone(allUtterances) || current.phone || null,
+    address: extractFallbackAddress(allUtterances) || current.address || null,
+    serviceAddress: extractFallbackAddress(allUtterances) || current.serviceAddress || null,
+    city: extractFallbackCity(allUtterances) || current.city || null,
+    cityOrArea: extractFallbackCity(allUtterances) || current.cityOrArea || null,
+    serviceType: extractFallbackServiceType(allUtterances) || current.serviceType || null,
+    reportedIssue: extractFallbackReportedIssue(allUtterances) || current.problemDescription || null,
+    urgency: normalizeUrgency(current.urgency, allUtterances),
+    preferredAppointmentTime: extractFallbackAppointmentTime(allUtterances) || current.preferredAppointmentTime || null,
+  };
+
+  const merged = mergeCustomerInfo(current, extracted);
+  const intent = inferIntent(null, allUtterances);
+  const leadStatus = calculateLeadStatus(currentLeadStatus, extracted, merged);
+
+  return { customerInfo: merged, leadStatus, intent };
 }

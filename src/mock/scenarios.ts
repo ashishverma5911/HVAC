@@ -167,7 +167,7 @@ export const demoScenarios: DemoScenario[] = [
       },
       {
         sender: 'ai',
-        text: "Under Summit HVAC's demo configuration, our standard diagnostic inspection fee is $89, which is credited toward any repair work approved after the technician inspects the system. (Note: Inspection fees and pricing policies are fully configurable by each contractor).",
+        text: "Summit HVAC does not have preset pricing configured over the phone, as diagnostic and repair estimates depend on system inspection. Our certified technician will inspect your heat pump and provide an upfront quote before any work begins. Would you like to check available appointment times?",
       },
       {
         sender: 'customer',

@@ -7,13 +7,22 @@ import {
   FALLBACK_GEMINI_MODELS,
 } from '@/lib/ai/gemini';
 import { SUMMIT_HVAC_SYSTEM_INSTRUCTION } from '@/lib/ai/receptionistPrompt';
+import { RECEPTIONIST_TOOLS } from '@/lib/ai/tools';
+import { executeAgentTool } from '@/lib/ai/toolExecutor';
+import { mockStore, resolveAppointmentSlot } from '@/lib/mock/store';
 import {
   validateIntent,
+  inferIntent,
   calculateLeadStatus,
   mergeCustomerInfo,
   sanitizeExtractedString,
   sanitizeCustomerName,
+  extractFallbackName,
+  extractFallbackPhone,
   extractFallbackAddress,
+  extractFallbackCity,
+  extractFallbackServiceType,
+  extractFallbackReportedIssue,
   extractFallbackAppointmentTime,
   normalizeUrgency,
 } from '@/lib/ai/extractConversationData';
@@ -23,6 +32,7 @@ import {
   CustomerInfo,
   ExtractedCustomerData,
   LeadStatus,
+  AgentAction,
 } from '@/types';
 
 export async function POST(req: NextRequest) {
@@ -37,7 +47,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { messages, currentData } = body;
+    const { messages, currentData, conversationId: reqConvId, leadId: reqLeadId } = body;
 
     // 1. Validation
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -48,14 +58,170 @@ export async function POST(req: NextRequest) {
     }
 
     const lastMessage = messages[messages.length - 1];
-    if (!lastMessage || !lastMessage.content || typeof lastMessage.content !== 'string' || !lastMessage.content.trim()) {
+    if (
+      !lastMessage ||
+      !lastMessage.content ||
+      typeof lastMessage.content !== 'string' ||
+      !lastMessage.content.trim()
+    ) {
       return NextResponse.json(
         { error: 'Message cannot be empty or whitespace only.' },
         { status: 400 }
       );
     }
 
-    // 2. Initialize Gemini Client and Candidate Models
+    const conversationId = reqConvId || 'default-session';
+    const session = mockStore.getSession(conversationId);
+    if (reqLeadId && !session.leadId) {
+      session.leadId = reqLeadId;
+    }
+
+    // 2. Extract conversation utterances and run deterministic information extraction
+    const allUserUtterances = messages
+      .filter((m) => m.role === 'user')
+      .map((m) => m.content)
+      .join('\n');
+
+    console.log(`[Receptionist API] Session: ${conversationId} | Total messages: ${messages.length}`);
+
+    // Robust deterministic extractions
+    const candidateName =
+      extractFallbackName(allUserUtterances) ||
+      sanitizeCustomerName(currentData?.name);
+
+    const candidatePhone =
+      extractFallbackPhone(allUserUtterances) ||
+      sanitizeExtractedString(currentData?.phone);
+
+    const candidateStreet =
+      extractFallbackAddress(allUserUtterances) ||
+      (currentData?.serviceAddress && /\d+\s+[A-Za-z]/.test(currentData.serviceAddress)
+        ? currentData.serviceAddress
+        : null);
+
+    const candidateCity =
+      extractFallbackCity(allUserUtterances) ||
+      currentData?.city ||
+      (currentData as any)?.cityOrArea ||
+      null;
+
+    const candidateServiceType =
+      extractFallbackServiceType(allUserUtterances) ||
+      sanitizeExtractedString(currentData?.serviceType);
+
+    const candidateIssue =
+      extractFallbackReportedIssue(allUserUtterances) ||
+      sanitizeExtractedString(currentData?.problemDescription);
+
+    const candidateAppt =
+      extractFallbackAppointmentTime(allUserUtterances) ||
+      sanitizeExtractedString(currentData?.preferredAppointmentTime);
+
+    const candidateUrgency = normalizeUrgency(currentData?.urgency, allUserUtterances);
+
+    const executedActions: AgentAction[] = [];
+
+    // Helper to run action if not already in session/executedActions
+    const runServerAction = (toolName: string, args: Record<string, unknown>) => {
+      const res = executeAgentTool(toolName, args, { conversationId });
+      const existingIdx = executedActions.findIndex((a) => a.toolName === toolName);
+      if (existingIdx >= 0) {
+        executedActions[existingIdx] = res.action;
+      } else {
+        executedActions.push(res.action);
+      }
+      return res;
+    };
+
+    // 3. Application State Rules & Prerequisites Evaluation
+    // Check service area if city or street address mentions an area
+    const areaToCheck = candidateCity || candidateStreet;
+    if (areaToCheck && !session.serviceAreaChecked) {
+      runServerAction('check_service_area', { city: areaToCheck });
+    }
+
+    // If service area check completed and location is unsupported, trigger transfer_to_human immediately
+    if (session.serviceAreaChecked && !session.serviceAreaSupported && !session.transferId) {
+      runServerAction('transfer_to_human', {
+        reason: `Customer location (${candidateCity || areaToCheck || 'unsupported location'}) is outside Summit HVAC service area`,
+        urgency: candidateUrgency,
+        summary: `Caller is in unsupported location (${candidateCity || areaToCheck}). Transferred to human dispatch for referral or special dispatch evaluation.`,
+      });
+    }
+
+    // Create lead if all 5 required customer details exist (requires physical street address!)
+    if (
+      candidateName &&
+      candidatePhone &&
+      candidateStreet &&
+      candidateServiceType &&
+      candidateIssue &&
+      !session.leadId
+    ) {
+      // Ensure service area checked first
+      if (!session.serviceAreaChecked) {
+        runServerAction('check_service_area', { city: candidateStreet });
+      }
+      runServerAction('create_lead', {
+        customerName: candidateName,
+        phone: candidatePhone,
+        serviceAddress: candidateStreet,
+        serviceType: candidateServiceType,
+        reportedIssue: candidateIssue,
+        urgency: candidateUrgency,
+      });
+    }
+
+    // Fetch slots if customer is inquiring about appointment
+    const isAppointmentInquiry =
+      Boolean(candidateAppt) ||
+      /\b(come|schedule|appointment|book|slot|slots|tomorrow|today|available times|when can|visit)\b/i.test(
+        lastMessage.content
+      );
+
+    if (isAppointmentInquiry && !session.slotsChecked) {
+      runServerAction('get_available_slots', {
+        serviceType: candidateServiceType || 'AC Repair',
+        urgency: candidateUrgency,
+        preferredDate: candidateAppt || undefined,
+      });
+    }
+
+    // Confirm appointment slot if customer confirms or requests a specific available slot
+    const matchedSlot = resolveAppointmentSlot(
+      lastMessage.content,
+      allUserUtterances,
+      session.availableSlots.length > 0 ? session.availableSlots : undefined
+    );
+
+    if (matchedSlot && session.leadId && session.slotsChecked && !session.appointmentId) {
+      const lead = mockStore.getLead(session.leadId);
+      if (lead) {
+        runServerAction('request_appointment', {
+          leadId: lead.id,
+          preferredSlot: matchedSlot,
+          customerName: lead.customerName,
+          phone: lead.phone,
+          serviceAddress: lead.serviceAddress,
+        });
+      }
+    }
+
+    // Human transfer request
+    const isTransferRequest =
+      /\b(speak with a (?:person|human|representative|agent|manager|dispatcher)|talk to a (?:person|human|representative|agent|manager|dispatcher)|transfer me|human please|talk to someone|speak to someone)\b/i.test(
+        lastMessage.content
+      );
+
+    if (isTransferRequest && !session.transferId) {
+      runServerAction('transfer_to_human', {
+        reason: 'Customer requested human representative',
+        urgency: candidateUrgency,
+        summary: `Caller requested human transfer. Prior problem: ${candidateIssue || 'HVAC inquiry'}.`,
+      });
+    }
+
+    // 4. Multi-turn Gemini Tool Calling Loop
     const ai = getGeminiClient();
     const primaryModel = getGeminiModel();
     const candidateModels = [
@@ -63,8 +229,7 @@ export async function POST(req: NextRequest) {
       ...FALLBACK_GEMINI_MODELS.filter((m) => m !== primaryModel),
     ];
 
-    // 3. Format contents for multi-turn Gemini conversation
-    // Normalize consecutive messages of the same role to maintain strict alternating conversation turns
+    // Normalize messages for strict alternating turns
     const normalizedTurns: { role: 'user' | 'model'; content: string }[] = [];
     for (const m of messages) {
       const role: 'user' | 'model' = m.role === 'model' ? 'model' : 'user';
@@ -79,92 +244,134 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Map to Google GenAI content structure
-    const contents = normalizedTurns.map((m) => ({
-      role: m.role,
-      parts: [{ text: m.content }],
-    }));
+    let currentContents: Array<{ role: 'user' | 'model' | 'tool'; parts: any[] }> =
+      normalizedTurns.map((m) => ({
+        role: m.role,
+        parts: [{ text: m.content }],
+      }));
 
-    // 4. Call Gemini API with structured JSON output schema (with exponential backoff and quota failover)
-    let response;
+    let finalReply = '';
     let finalError: unknown;
 
     modelLoop: for (const candidateModel of candidateModels) {
-      const MAX_RETRIES = 1; // 1 retry per model before attempting fallback model
+      const MAX_RETRIES = 1;
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
-          response = await ai.models.generateContent({
-            model: candidateModel,
-            contents,
-            config: {
-              systemInstruction: SUMMIT_HVAC_SYSTEM_INSTRUCTION,
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: 'object',
-                properties: {
-                  reply: {
-                    type: 'string',
-                    description: 'The natural conversational text response from the receptionist to the customer.',
-                  },
-                  detectedIntent: {
-                    type: 'string',
-                    description: 'Detected customer intent category.',
-                  },
-                  extractedData: {
-                    type: 'object',
-                    properties: {
-                      customerName: { type: 'string' },
-                      phone: { type: 'string' },
-                      serviceAddress: { type: 'string' },
-                      address: { type: 'string' },
-                      serviceType: { type: 'string' },
-                      reportedIssue: { type: 'string' },
-                      urgency: { type: 'string' },
-                      preferredAppointmentTime: { type: 'string' },
-                      isEmergencySafetyHazard: { type: 'boolean' },
-                      hasCustomerRequestedAppointment: { type: 'boolean' },
-                    },
-                  },
-                },
-                required: ['reply', 'detectedIntent'],
+          let loopCount = 0;
+          const MAX_TOOL_LOOPS = 4;
+
+          toolLoop: while (loopCount < MAX_TOOL_LOOPS) {
+            loopCount++;
+            const genResponse: any = await ai.models.generateContent({
+              model: candidateModel,
+              contents: currentContents,
+              config: {
+                systemInstruction: SUMMIT_HVAC_SYSTEM_INSTRUCTION,
+                tools: [{ functionDeclarations: RECEPTIONIST_TOOLS }],
               },
-            },
-          });
+            });
+
+            const functionCalls = genResponse.functionCalls || [];
+
+            if (functionCalls.length > 0) {
+              const toolResponseParts: any[] = [];
+
+              for (const fc of functionCalls) {
+                const toolName = fc.name || '';
+
+                if (toolName === 'transfer_to_human' && session.transferId) {
+                  toolResponseParts.push({
+                    functionResponse: {
+                      name: toolName,
+                      response: {
+                        output: {
+                          status: 'already_transferred',
+                          transferId: session.transferId,
+                          message:
+                            'This conversation has already been transferred to human dispatch. Please assure the caller that they are already being connected to a human representative.',
+                        },
+                      },
+                      id: fc.id,
+                    },
+                  });
+                  continue;
+                }
+
+                const execResult = runServerAction(
+                  toolName,
+                  (fc.args || {}) as Record<string, unknown>
+                );
+
+                toolResponseParts.push({
+                  functionResponse: {
+                    name: toolName,
+                    response: execResult.success
+                      ? { output: execResult.output }
+                      : { error: execResult.error },
+                    id: fc.id,
+                  },
+                });
+              }
+
+              const candidateParts = genResponse.candidates?.[0]?.content?.parts || [];
+              currentContents = [
+                ...currentContents,
+                {
+                  role: 'model' as const,
+                  parts:
+                    candidateParts.length > 0
+                      ? candidateParts
+                      : functionCalls.map((fc: any) => ({
+                          functionCall: { name: fc.name, args: fc.args, id: fc.id },
+                        })),
+                },
+                {
+                  role: 'tool' as const,
+                  parts: toolResponseParts,
+                },
+              ];
+
+              continue toolLoop;
+            }
+
+            // Model produced natural text response
+            finalReply = genResponse.text?.trim() || '';
+            break toolLoop;
+          }
+
           break modelLoop; // Succeeded!
         } catch (err: unknown) {
           finalError = err;
           const classification = classifyGeminiError(err);
 
-          // Server-side diagnostic log (sanitized: only status and category, zero credentials)
           console.warn(
             `[Gemini API] Model ${candidateModel} attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ` +
-            `category=${classification.category}, status=${classification.status}, ` +
-            `isTransient=${classification.isTransient}`
+              `category=${classification.category}, status=${classification.status}, ` +
+              `isTransient=${classification.isTransient}`
           );
 
-          // Do NOT retry permanent errors (e.g., 400, 401, 403, 404, or missing configuration)
           if (!classification.isTransient) {
             console.warn(`[Gemini API] Aborting retry for permanent error (${classification.category}).`);
             throw err;
           }
 
-          // If rate limit / quota is exhausted on this model, switch immediately to next candidate model
           const isQuotaExhausted =
             classification.category === 'TRANSIENT_RATE_LIMIT' ||
             (classification.retryAfterMs && classification.retryAfterMs > 15000);
 
           if (isQuotaExhausted && candidateModel !== candidateModels[candidateModels.length - 1]) {
             console.warn(
-              `[Gemini API] Model ${candidateModel} quota limit reached. Seamlessly switching to fallback model...`
+              `[Gemini API] Model ${candidateModel} quota limit reached. Switching to fallback model...`
             );
-            break; // Try next candidate model
+            break;
           }
 
-          // If retry remains on this candidate model, wait with backoff
           if (attempt < MAX_RETRIES) {
             const baseDelay = 1000 * Math.pow(2, attempt);
             const jitter = Math.floor(Math.random() * 200);
-            const delayMs = classification.retryAfterMs ? Math.min(classification.retryAfterMs, 3000) : (baseDelay + jitter);
+            const delayMs = classification.retryAfterMs
+              ? Math.min(classification.retryAfterMs, 3000)
+              : baseDelay + jitter;
 
             console.warn(`[Gemini API] Retrying model ${candidateModel} in ${delayMs}ms...`);
             await new Promise((r) => setTimeout(r, delayMs));
@@ -174,144 +381,121 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!response) {
-      throw finalError || new Error('No response received from Gemini.');
+    // 5. Intelligent Fallback Response Construction & Safeguards
+    // Scrub any invented dollar amounts or fee claims from finalReply
+    if (/\$\s*\d+|\b\d+\s*dollars\b/i.test(finalReply)) {
+      console.warn('[Receptionist API] Scrubbing invented price or fee claim from finalReply');
+      finalReply = finalReply.replace(
+        /\b(?:Our|The)?\s*(?:standard\s+)?(?:diagnostic|inspection)?\s*(?:fee|cost|price|charge)\s*(?:is|of)?\s*\$\d+[^.]*\./gi,
+        'Specific pricing information is not available over the phone. Our certified technician will provide an upfront diagnostic and repair estimate in person before any work begins.'
+      );
+      finalReply = finalReply.replace(/\$\s*\d+(?:\.\d{2})?/g, '[pricing upon on-site inspection]');
     }
 
-    const responseText = response.text?.trim() || '';
+    const isRepeatedGreeting =
+      messages.length > 1 &&
+      /^(?:Hi|Hello|Thank you for reaching out to Summit HVAC|Thanks for contacting)/i.test(finalReply);
 
-    let parsedResult: {
-      reply?: string;
-      detectedIntent?: string;
-      extractedData?: ExtractedCustomerData;
-    } = {};
-
-    try {
-      parsedResult = JSON.parse(responseText);
-    } catch {
-      // Graceful fallback if JSON parsing fails
-      parsedResult = {
-        reply: responseText || "Thank you for calling Summit HVAC. How can I help you today?",
-        detectedIntent: 'GENERAL_QUESTION',
-        extractedData: {},
-      };
-    }
-
-    const reply = parsedResult.reply || "Thank you for reaching out to Summit HVAC. How may I assist you?";
-    const detectedIntent = validateIntent(parsedResult.detectedIntent);
-    const rawData = parsedResult.extractedData || {};
-
-    // Combine all user utterances for deterministic fallback extraction and urgency verification
-    const allUserUtterances = messages
-      .filter((m) => m.role === 'user')
-      .map((m) => m.content)
-      .join(' ');
-
-    // Current accumulated customer info from previous turns
-    const currentCustomerInfo: CustomerInfo = {
-      name: currentData?.name || '',
-      phone: currentData?.phone || '',
-      address: currentData?.address || currentData?.serviceAddress || '',
-      serviceAddress: currentData?.serviceAddress || currentData?.address || '',
-      serviceType: currentData?.serviceType || '',
-      problemDescription: currentData?.problemDescription || '',
-      urgency: currentData?.urgency || 'normal',
-      preferredAppointmentTime: currentData?.preferredAppointmentTime || '',
-    };
-
-    // 1. Service Address Extraction: Model output, fallback from utterances, or preserved previous
-    let resolvedAddress = sanitizeExtractedString(rawData.serviceAddress || rawData.address);
-    if (!resolvedAddress) {
-      const fallbackAddr = extractFallbackAddress(allUserUtterances);
-      if (fallbackAddr) {
-        resolvedAddress = fallbackAddr;
-      } else if (currentCustomerInfo.serviceAddress || currentCustomerInfo.address) {
-        resolvedAddress = currentCustomerInfo.serviceAddress || currentCustomerInfo.address;
+    if (session.transferId && (isTransferRequest || !finalReply || isRepeatedGreeting)) {
+      finalReply =
+        'Your conversation has already been routed to our human dispatch team. A team member is actively being connected to assist you. Please hold on for just a moment.';
+    } else if (!finalReply || isRepeatedGreeting) {
+      if (session.appointmentId) {
+        const apt = mockStore.getAppointment(session.appointmentId);
+        finalReply = `I have submitted your appointment request for ${apt?.slot || 'your selected window'}. Our dispatch team will review the schedule and contact you shortly to confirm the appointment.`;
+      } else if (session.slotsChecked) {
+        finalReply = `We have technician appointment windows available on Monday at 10:00 AM, 2:00 PM, and 4:00 PM; Tuesday at 9:00 AM, 1:00 PM, and 3:00 PM; or Wednesday at 11:00 AM and 2:00 PM. Would any of those times work best for you?`;
+      } else if (session.leadId) {
+        const lead = mockStore.getLead(session.leadId);
+        finalReply = `Thank you, ${lead?.customerName || 'Alex'}. I have recorded your service request for your ${lead?.serviceType || 'AC'} at ${lead?.serviceAddress || 'your address'}. Would you like to check our available times to schedule a technician?`;
+      } else if (messages.length > 2) {
+        finalReply =
+          'I have recorded your details. How else can I assist you with your heating or cooling system today?';
+      } else {
+        finalReply =
+          'Thank you for reaching out to Summit HVAC. How can I assist you with your heating or cooling system today?';
       }
     }
 
-    // 2. Customer Name: Reject ambiguous names like "John/Alex", preserve existing verified name
-    let resolvedName = sanitizeCustomerName(rawData.customerName);
-    if (!resolvedName && currentCustomerInfo.name) {
-      resolvedName = currentCustomerInfo.name;
-    }
-
-    // 3. Phone: Extract or preserve
-    let resolvedPhone = sanitizeExtractedString(rawData.phone);
-    if (!resolvedPhone && currentCustomerInfo.phone) {
-      resolvedPhone = currentCustomerInfo.phone;
-    }
-
-    // 4. Urgency: Default to normal unless explicit urgent request or safety hazard
-    const resolvedUrgency = normalizeUrgency(rawData.urgency, allUserUtterances);
-
-    // 5. Service Type: Infer from intent or preserve
-    let resolvedServiceType = sanitizeExtractedString(rawData.serviceType);
-    if (!resolvedServiceType && currentCustomerInfo.serviceType) {
-      resolvedServiceType = currentCustomerInfo.serviceType;
-    } else if (!resolvedServiceType) {
-      if (detectedIntent === 'AC_COOLING_FAILURE') resolvedServiceType = 'AC Repair';
-      else if (detectedIntent === 'HEATING_FAILURE') resolvedServiceType = 'Heating Repair';
-      else if (detectedIntent === 'MAINTENANCE') resolvedServiceType = 'HVAC Maintenance';
-      else if (detectedIntent === 'INSTALLATION') resolvedServiceType = 'AC Installation';
-      else if (detectedIntent === 'EMERGENCY') resolvedServiceType = 'Emergency Inspection';
-    }
-
-    // 6. Reported Issue: Keep distinct, preserve across turns
-    let resolvedIssue = sanitizeExtractedString(rawData.reportedIssue);
-    if (!resolvedIssue && currentCustomerInfo.problemDescription) {
-      resolvedIssue = currentCustomerInfo.problemDescription;
-    } else if (!resolvedIssue && detectedIntent === 'AC_COOLING_FAILURE') {
-      resolvedIssue = "AC isn't cooling";
-    }
-
-    // 7. Preferred Appointment Time: Model output, fallback schedule extractor, or preserved
-    let resolvedApptTime = sanitizeExtractedString(rawData.preferredAppointmentTime);
-    if (!resolvedApptTime) {
-      const fallbackAppt = extractFallbackAppointmentTime(allUserUtterances);
-      if (fallbackAppt) {
-        resolvedApptTime = fallbackAppt;
-      } else if (currentCustomerInfo.preferredAppointmentTime) {
-        resolvedApptTime = currentCustomerInfo.preferredAppointmentTime;
-      }
-    }
-
-    const hasAppointmentSignal =
-      Boolean(rawData.hasCustomerRequestedAppointment) ||
-      Boolean(resolvedApptTime) ||
-      /\b(come|schedule|appointment|book|technician|visit)\b/i.test(allUserUtterances);
+    // 6. Extracted Data Assembly
+    const executedToolNames = executedActions.map((a) => a.toolName);
 
     const extractedData: ExtractedCustomerData = {
-      customerName: resolvedName || null,
-      phone: resolvedPhone || null,
-      serviceAddress: resolvedAddress || null,
-      address: resolvedAddress || null,
-      serviceType: resolvedServiceType || null,
-      reportedIssue: resolvedIssue || null,
-      urgency: resolvedUrgency,
-      preferredAppointmentTime: resolvedApptTime || null,
-      isEmergencySafetyHazard: Boolean(rawData.isEmergencySafetyHazard) || resolvedUrgency === 'emergency',
-      hasCustomerRequestedAppointment: hasAppointmentSignal,
+      customerName: candidateName || null,
+      phone: candidatePhone || null,
+      serviceAddress: candidateStreet || null,
+      address: candidateStreet || null,
+      city: candidateCity || null,
+      cityOrArea: candidateCity || null,
+      serviceType: candidateServiceType || null,
+      reportedIssue: candidateIssue || null,
+      urgency: candidateUrgency,
+      preferredAppointmentTime:
+        candidateAppt ||
+        (session.appointmentId ? mockStore.getAppointment(session.appointmentId)?.slot : null) ||
+        null,
+      isEmergencySafetyHazard:
+        candidateUrgency === 'emergency' || Boolean(session.transferId),
+      hasCustomerRequestedAppointment:
+        Boolean(session.slotsChecked) ||
+        Boolean(session.appointmentId) ||
+        Boolean(candidateAppt),
     };
 
-    const updatedCustomerInfo = mergeCustomerInfo(currentCustomerInfo, extractedData);
-    const computedLeadStatus = calculateLeadStatus(
-      'new',
-      extractedData,
-      updatedCustomerInfo
-    );
+    // Determine intent
+    const detectedIntent = inferIntent(null, allUserUtterances, executedToolNames);
+
+    // Determine leadStatus according to verified application state:
+    // Escalation/transfer takes top priority over scheduled requests
+    let computedLeadStatus: LeadStatus;
+    if (session.transferId) {
+      computedLeadStatus = 'transferred';
+    } else if (session.appointmentId) {
+      computedLeadStatus = 'appointment_requested';
+    } else if (session.leadId) {
+      computedLeadStatus = 'qualified';
+    } else {
+      const currentCustomerInfo: CustomerInfo = {
+        name: currentData?.name || '',
+        phone: currentData?.phone || '',
+        address: currentData?.serviceAddress || currentData?.address || '',
+        serviceAddress: currentData?.serviceAddress || '',
+        city: currentData?.city || (currentData as any)?.cityOrArea || '',
+        cityOrArea: currentData?.city || (currentData as any)?.cityOrArea || '',
+        serviceType: currentData?.serviceType || '',
+        problemDescription: currentData?.problemDescription || '',
+        urgency: currentData?.urgency || 'normal',
+        preferredAppointmentTime: currentData?.preferredAppointmentTime || '',
+      };
+      const updatedCustomerInfo = mergeCustomerInfo(currentCustomerInfo, extractedData);
+      computedLeadStatus = calculateLeadStatus('new', extractedData, updatedCustomerInfo);
+    }
+
+    console.log('[Receptionist API] State Summary:', {
+      leadId: session.leadId,
+      appointmentId: session.appointmentId,
+      slotsChecked: session.slotsChecked,
+      actionsCount: executedActions.length,
+      leadStatus: computedLeadStatus,
+      detectedIntent,
+    });
 
     const apiResponse: ChatApiResponse = {
-      message: reply,
+      message: finalReply,
       detectedIntent,
       extractedData,
       leadStatus: computedLeadStatus,
+      leadId: session.leadId || undefined,
+      appointmentId: session.appointmentId || undefined,
+      executedActions,
     };
 
     return NextResponse.json(apiResponse, { status: 200 });
   } catch (err: unknown) {
     const { message, status, category } = formatGeminiError(err);
-    console.error(`[Gemini API] Error response sent to client: status=${status}, category=${category}`);
+    console.error(
+      `[Gemini API] Error response sent to client: status=${status}, category=${category}`
+    );
     return NextResponse.json({ error: message }, { status });
   }
 }
