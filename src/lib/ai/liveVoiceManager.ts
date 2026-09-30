@@ -29,11 +29,14 @@ export interface LiveTranscriptTurn {
 
 export interface LiveVoiceDiagnostics {
   sessionId: string;
+  tokenRequest: 'idle' | 'requesting' | 'success' | 'failure';
+  liveModel: string;
+  tokenReceived: 'yes' | 'no';
+  liveSession: 'connected' | 'connecting' | 'disconnected' | 'failed';
   microphone: 'connected' | 'disconnected';
   audioChunksGenerated: number;
   audioChunksSent: number;
   audioBytesSent: number;
-  liveSession: 'connected' | 'connecting' | 'disconnected';
   inputTranscriptionEvents: number;
   finalUserTurns: number;
   outputTranscriptionEvents: number;
@@ -61,15 +64,14 @@ export class LiveVoiceManager {
   private conversationId: string = '';
   private isMutedState: boolean = false;
 
-  // Media & Web Audio
+  // Media & Web Audio (Unified context for both capture and playback)
   private mediaStream: MediaStream | null = null;
-  private captureAudioContext: AudioContext | null = null;
+  private audioContext: AudioContext | null = null;
   private processorNode: ScriptProcessorNode | null = null;
   private micSourceNode: MediaStreamAudioSourceNode | null = null;
   private muteGainNode: GainNode | null = null;
 
   // Audio Playback
-  private playbackAudioContext: AudioContext | null = null;
   private nextPlayTime: number = 0;
   private activeAudioSources: AudioBufferSourceNode[] = [];
 
@@ -90,11 +92,14 @@ export class LiveVoiceManager {
   // Development Diagnostics
   private diagnostics: LiveVoiceDiagnostics = {
     sessionId: 'IDLE',
+    tokenRequest: 'idle',
+    liveModel: 'gemini-3.8-live',
+    tokenReceived: 'no',
+    liveSession: 'disconnected',
     microphone: 'disconnected',
     audioChunksGenerated: 0,
     audioChunksSent: 0,
     audioBytesSent: 0,
-    liveSession: 'disconnected',
     inputTranscriptionEvents: 0,
     finalUserTurns: 0,
     outputTranscriptionEvents: 0,
@@ -155,11 +160,14 @@ export class LiveVoiceManager {
 
     this.diagnostics = {
       sessionId: generatedSessionId,
+      tokenRequest: 'idle',
+      liveModel: 'gemini-3.8-live',
+      tokenReceived: 'no',
+      liveSession: 'connecting',
       microphone: 'disconnected',
       audioChunksGenerated: 0,
       audioChunksSent: 0,
       audioBytesSent: 0,
-      liveSession: 'connecting',
       inputTranscriptionEvents: 0,
       finalUserTurns: 0,
       outputTranscriptionEvents: 0,
@@ -186,6 +194,16 @@ export class LiveVoiceManager {
         );
       }
 
+      // Initialize unified AudioContext immediately synchronously during user gesture window
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!this.audioContext || this.audioContext.state === 'closed') {
+        this.audioContext = new AudioCtx();
+      }
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+      this.nextPlayTime = this.audioContext.currentTime;
+
       // 2. Request microphone access explicitly
       let stream: MediaStream;
       try {
@@ -208,36 +226,76 @@ export class LiveVoiceManager {
       this.diagnostics.microphone = 'connected';
       this.emitDiagnostics();
 
-      // 3. Request short-lived ephemeral token from server
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
+      // 3. Immediately setup microphone capture so audio level meter responds right away
+      await this.setupMicrophoneCapture(stream);
+
+      // 4. Request short-lived ephemeral token from server
+      this.diagnostics.tokenRequest = 'requesting';
+      this.diagnostics.tokenReceived = 'no';
+      this.diagnostics.liveModel = 'gemini-3.8-live';
+      this.emitDiagnostics();
+
+      const tokenStart = Date.now();
+      console.log('[Live Voice Diagnostics] Token endpoint request started: POST /api/receptionist/live-token');
+
       const tokenRes = await fetch('/api/receptionist/live-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversationId: this.conversationId }),
       });
 
+      const tokenDurationMs = Date.now() - tokenStart;
+
       if (!tokenRes.ok) {
+        this.diagnostics.tokenRequest = 'failure';
+        this.diagnostics.tokenReceived = 'no';
+        this.diagnostics.liveSession = 'failed';
+        this.emitDiagnostics();
         const errData = await tokenRes.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to authenticate live voice session with the server.');
+        console.error('[Live Voice Diagnostics] Token request failed:', {
+          status: tokenRes.status,
+          category: errData.category || 'UNKNOWN',
+          durationMs: tokenDurationMs,
+          error: errData.error,
+        });
+        throw new Error(
+          errData.error || `Failed to authenticate live voice session with the server (HTTP ${tokenRes.status}).`
+        );
       }
 
-      const { token, model } = await tokenRes.json();
+      const resData = await tokenRes.json();
+      const { token, model } = resData;
+
+      console.log('[Live Voice Diagnostics] Token endpoint responded successfully:', {
+        status: tokenRes.status,
+        durationMs: tokenDurationMs,
+        model: model || 'gemini-3.8-live',
+        hasTokenName: typeof token === 'string' && token.startsWith('auth_tokens/'),
+        hasExpireTime: !!resData.expireTime,
+      });
+
       if (!token) {
-        throw new Error('Server returned an invalid live session token.');
+        this.diagnostics.tokenRequest = 'failure';
+        this.diagnostics.tokenReceived = 'no';
+        this.diagnostics.liveSession = 'failed';
+        this.emitDiagnostics();
+        throw new Error('Server returned an invalid live session token (missing token identifier).');
       }
 
-      // 4. Initialize client-side GoogleGenAI using the ephemeral token (v1alpha)
+      this.diagnostics.tokenRequest = 'success';
+      this.diagnostics.tokenReceived = 'yes';
+      this.diagnostics.liveModel = model || 'gemini-3.8-live';
+      this.emitDiagnostics();
+
+      // 5. Initialize client-side GoogleGenAI using the ephemeral token (v1alpha)
       this.aiClient = new GoogleGenAI({
         apiKey: token,
         httpOptions: { apiVersion: 'v1alpha' },
       });
-
-      // 5. Initialize Audio Contexts early with user gesture
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.playbackAudioContext = new AudioCtx();
-      if (this.playbackAudioContext.state === 'suspended') {
-        await this.playbackAudioContext.resume();
-      }
-      this.nextPlayTime = this.playbackAudioContext.currentTime;
 
       // 6. Connect to Gemini Live API WebSocket
       const session = await this.aiClient.live.connect({
@@ -253,6 +311,8 @@ export class LiveVoiceManager {
           },
           onerror: (err: any) => {
             console.error('[Live Voice Diagnostics] WebSocket error:', err);
+            this.diagnostics.liveSession = 'failed';
+            this.emitDiagnostics();
             this.callbacks.onError?.('Live voice connection error occurred.');
             this.setState('ERROR');
           },
@@ -268,9 +328,6 @@ export class LiveVoiceManager {
       });
 
       this.liveSession = session;
-
-      // 7. Initialize Microphone Capture & Streaming only AFTER session is ready
-      await this.setupMicrophoneCapture(stream);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to start voice conversation.';
       console.error('[Live Voice] Initialization failed:', msg);
@@ -285,26 +342,48 @@ export class LiveVoiceManager {
    * Uses a zero-gain node sink to prevent mic input from echoing into user speakers.
    */
   private async setupMicrophoneCapture(stream: MediaStream): Promise<void> {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    
-    // Request 16000Hz directly from Web Audio API if supported
-    try {
-      this.captureAudioContext = new AudioCtx({ sampleRate: 16000 });
-    } catch {
-      this.captureAudioContext = new AudioCtx();
+    if (!this.audioContext || this.audioContext.state === 'closed') {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      this.audioContext = new AudioCtx();
     }
 
-    if (this.captureAudioContext.state === 'suspended') {
-      await this.captureAudioContext.resume();
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
     }
-    const sourceSampleRate = this.captureAudioContext.sampleRate;
 
-    this.micSourceNode = this.captureAudioContext.createMediaStreamSource(stream);
+    // Ensure all audio tracks are active
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = !this.isMutedState;
+    });
+
+    const sourceSampleRate = this.audioContext.sampleRate;
+
+    // Disconnect previous nodes if any
+    if (this.processorNode) {
+      this.processorNode.disconnect();
+      this.processorNode.onaudioprocess = null;
+      this.processorNode = null;
+    }
+    if (this.muteGainNode) {
+      this.muteGainNode.disconnect();
+      this.muteGainNode = null;
+    }
+    if (this.micSourceNode) {
+      this.micSourceNode.disconnect();
+      this.micSourceNode = null;
+    }
+
+    this.micSourceNode = this.audioContext.createMediaStreamSource(stream);
     // Buffer size 4096 gives ~85-93ms latency chunks at 44.1/48kHz, optimal for streaming
-    this.processorNode = this.captureAudioContext.createScriptProcessor(4096, 1, 1);
+    this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
 
     this.processorNode.onaudioprocess = (e) => {
-      if (this.isMutedState || !this.liveSession || this.state === 'IDLE' || this.state === 'ENDED') {
+      if (this.state === 'IDLE' || this.state === 'ENDED') {
+        return;
+      }
+
+      if (this.isMutedState) {
+        this.callbacks.onAudioLevel?.(0);
         return;
       }
 
@@ -316,10 +395,15 @@ export class LiveVoiceManager {
         sum += inputData[i] * inputData[i];
       }
       const rms = Math.sqrt(sum / inputData.length);
-      const normalizedLevel = Math.min(1.0, rms * 4); // Boost visually
+      const normalizedLevel = Math.min(1.0, rms * 5); // Responsive visualization
       this.callbacks.onAudioLevel?.(normalizedLevel);
 
       this.diagnostics.audioChunksGenerated += 1;
+
+      // Only send audio if Live session is ready
+      if (!this.liveSession) {
+        return;
+      }
 
       // Downsample to 16000Hz for Gemini Live input
       const downsampled = downsampleBuffer(inputData, sourceSampleRate, 16000);
@@ -351,10 +435,11 @@ export class LiveVoiceManager {
     this.micSourceNode.connect(this.processorNode);
 
     // Route processor through zero-gain node to destination to prevent speaker feedback loop
-    this.muteGainNode = this.captureAudioContext.createGain();
+    // Connecting to destination is essential in Chromium to keep the ScriptProcessor running!
+    this.muteGainNode = this.audioContext.createGain();
     this.muteGainNode.gain.value = 0;
     this.processorNode.connect(this.muteGainNode);
-    this.muteGainNode.connect(this.captureAudioContext.destination);
+    this.muteGainNode.connect(this.audioContext.destination);
   }
 
   /**
@@ -499,21 +584,34 @@ export class LiveVoiceManager {
    * Plays a 24000Hz PCM audio chunk through Web Audio API.
    */
   private playAudioChunk(base64Data: string): void {
-    if (!this.playbackAudioContext) return;
+    if (!this.audioContext) return;
+
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume().catch(() => {});
+    }
 
     try {
       const int16Array = base64ToInt16Array(base64Data);
       const float32Array = pcm16ToFloat32(int16Array);
 
-      const audioBuffer = this.playbackAudioContext.createBuffer(1, float32Array.length, 24000);
+      // Calculate audio energy for AI speaking visualization
+      let sum = 0;
+      for (let i = 0; i < float32Array.length; i++) {
+        sum += float32Array[i] * float32Array[i];
+      }
+      const rms = Math.sqrt(sum / float32Array.length);
+      const normalizedLevel = Math.min(1.0, rms * 5);
+      this.callbacks.onAudioLevel?.(normalizedLevel);
+
+      const audioBuffer = this.audioContext.createBuffer(1, float32Array.length, 24000);
       audioBuffer.getChannelData(0).set(float32Array);
 
-      const sourceNode = this.playbackAudioContext.createBufferSource();
+      const sourceNode = this.audioContext.createBufferSource();
       sourceNode.buffer = audioBuffer;
-      sourceNode.connect(this.playbackAudioContext.destination);
+      sourceNode.connect(this.audioContext.destination);
 
       // Low latency scheduling: schedule immediately after the previous chunk
-      const now = this.playbackAudioContext.currentTime;
+      const now = this.audioContext.currentTime;
       const startTime = Math.max(now, this.nextPlayTime);
       sourceNode.start(startTime);
       this.nextPlayTime = startTime + audioBuffer.duration;
@@ -530,6 +628,7 @@ export class LiveVoiceManager {
         }
         if (this.activeAudioSources.length === 0) {
           this.diagnostics.playback = 'idle';
+          this.callbacks.onAudioLevel?.(0);
           this.emitDiagnostics();
           if (this.state === 'AI_SPEAKING') {
             this.setState(this.isMutedState ? 'MUTED' : 'LISTENING');
@@ -556,9 +655,10 @@ export class LiveVoiceManager {
     }
     this.activeAudioSources = [];
     this.diagnostics.playback = 'idle';
+    this.callbacks.onAudioLevel?.(0);
     this.emitDiagnostics();
-    if (this.playbackAudioContext) {
-      this.nextPlayTime = this.playbackAudioContext.currentTime;
+    if (this.audioContext) {
+      this.nextPlayTime = this.audioContext.currentTime;
     }
     this.setState(this.isMutedState ? 'MUTED' : 'LISTENING');
   }
@@ -635,6 +735,12 @@ export class LiveVoiceManager {
       });
     }
 
+    if (muted) {
+      this.callbacks.onAudioLevel?.(0);
+    } else if (this.audioContext && this.audioContext.state === 'suspended') {
+      this.audioContext.resume().catch(() => {});
+    }
+
     if (this.state !== 'CONNECTING' && this.state !== 'IDLE' && this.state !== 'ENDED') {
       if (muted) {
         this.setState('MUTED');
@@ -705,15 +811,11 @@ export class LiveVoiceManager {
       this.micSourceNode.disconnect();
       this.micSourceNode = null;
     }
-    if (this.captureAudioContext) {
-      this.captureAudioContext.close().catch(() => {});
-      this.captureAudioContext = null;
-    }
 
-    // 4. Close playback audio context
-    if (this.playbackAudioContext) {
-      this.playbackAudioContext.close().catch(() => {});
-      this.playbackAudioContext = null;
+    // 4. Close unified audio context
+    if (this.audioContext) {
+      this.audioContext.close().catch(() => {});
+      this.audioContext = null;
     }
 
     // 5. Close Gemini Live session

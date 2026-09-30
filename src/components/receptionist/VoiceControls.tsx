@@ -303,59 +303,112 @@ export function VoiceControls({
               <div className="p-3 border-t border-slate-200 bg-slate-900 text-slate-200 text-[11px] font-mono">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
-                    <p className="text-slate-400 text-[10px]">Microphone</p>
-                    <p className={`font-semibold ${diagnostics?.microphone === 'connected' ? 'text-emerald-400' : 'text-slate-400'}`}>
-                      {diagnostics?.microphone || 'disconnected'}
+                    <p className="text-slate-400 text-[10px]">Token Request</p>
+                    <p
+                      className={`font-semibold ${
+                        diagnostics?.tokenRequest === 'success'
+                          ? 'text-emerald-400'
+                          : diagnostics?.tokenRequest === 'failure'
+                          ? 'text-red-400'
+                          : diagnostics?.tokenRequest === 'requesting'
+                          ? 'text-amber-400 animate-pulse'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      {diagnostics?.tokenRequest || 'idle'}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
+                    <p className="text-slate-400 text-[10px]">Live Model</p>
+                    <p className="text-cyan-400 font-semibold truncate">
+                      {diagnostics?.liveModel || 'gemini-3.8-live'}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
+                    <p className="text-slate-400 text-[10px]">Token Received</p>
+                    <p
+                      className={`font-semibold ${
+                        diagnostics?.tokenReceived === 'yes' ? 'text-emerald-400' : 'text-slate-400'
+                      }`}
+                    >
+                      {diagnostics?.tokenReceived || 'no'}
                     </p>
                   </div>
                   <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
                     <p className="text-slate-400 text-[10px]">Live Session</p>
-                    <p className={`font-semibold ${diagnostics?.liveSession === 'connected' ? 'text-emerald-400' : diagnostics?.liveSession === 'connecting' ? 'text-amber-400' : 'text-slate-400'}`}>
+                    <p
+                      className={`font-semibold ${
+                        diagnostics?.liveSession === 'connected'
+                          ? 'text-emerald-400'
+                          : diagnostics?.liveSession === 'connecting'
+                          ? 'text-amber-400 animate-pulse'
+                          : diagnostics?.liveSession === 'failed'
+                          ? 'text-red-400'
+                          : 'text-slate-400'
+                      }`}
+                    >
                       {diagnostics?.liveSession || 'disconnected'}
                     </p>
                   </div>
+
                   <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
-                    <p className="text-slate-400 text-[10px]">Chunks Sent</p>
-                    <p className="text-white font-semibold">{diagnostics?.audioChunksSent || 0}</p>
+                    <p className="text-slate-400 text-[10px]">Microphone</p>
+                    <p
+                      className={`font-semibold ${
+                        diagnostics?.microphone === 'connected' ? 'text-emerald-400' : 'text-slate-400'
+                      }`}
+                    >
+                      {diagnostics?.microphone || 'disconnected'}
+                    </p>
                   </div>
                   <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
-                    <p className="text-slate-400 text-[10px]">Bytes Sent</p>
+                    <p className="text-slate-400 text-[10px]">Audio Chunks Sent</p>
                     <p className="text-white font-semibold">
-                      {((diagnostics?.audioBytesSent || 0) / 1024).toFixed(1)} KB
+                      {diagnostics?.audioChunksSent || 0}{' '}
+                      <span className="text-slate-400 text-[10px]">
+                        ({(((diagnostics?.audioBytesSent || 0) / 1024)).toFixed(1)} KB)
+                      </span>
                     </p>
                   </div>
                   <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
-                    <p className="text-slate-400 text-[10px]">User Turns</p>
+                    <p className="text-slate-400 text-[10px]">Transcript Input</p>
                     <p className="text-emerald-400 font-semibold">
-                      {diagnostics?.finalUserTurns || 0} final <span className="text-slate-400 text-[10px]">({diagnostics?.inputTranscriptionEvents || 0} events)</span>
+                      {diagnostics?.inputTranscriptionEvents || 0} events{' '}
+                      <span className="text-slate-400 text-[10px]">({diagnostics?.finalUserTurns || 0} final)</span>
                     </p>
                   </div>
                   <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
-                    <p className="text-slate-400 text-[10px]">Assistant Turns</p>
+                    <p className="text-slate-400 text-[10px]">Model Output</p>
                     <p className="text-blue-400 font-semibold">
-                      {diagnostics?.finalAssistantTurns || 0} final <span className="text-slate-400 text-[10px]">({diagnostics?.outputTranscriptionEvents || 0} events)</span>
+                      {diagnostics?.outputTranscriptionEvents || 0} events{' '}
+                      <span className="text-slate-400 text-[10px]">({diagnostics?.finalAssistantTurns || 0} final)</span>
                     </p>
                   </div>
+
                   <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
-                    <p className="text-slate-400 text-[10px]">Model Audio Chunks</p>
-                    <p className="text-cyan-400 font-semibold">{diagnostics?.modelAudioChunks || 0}</p>
+                    <p className="text-slate-400 text-[10px]">Audio Out (Chunks)</p>
+                    <p className="text-cyan-400 font-semibold">{diagnostics?.modelAudioChunks || 0} received</p>
                   </div>
                   <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
                     <p className="text-slate-400 text-[10px]">Tool Calls</p>
                     <p className="text-purple-400 font-semibold">{diagnostics?.toolCalls || 0}</p>
                   </div>
-                </div>
-
-                <div className="mt-2.5 pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between text-[10px] text-slate-400 gap-2">
-                  <span>
-                    Playback: <strong className={diagnostics?.playback === 'playing' ? 'text-blue-400 animate-pulse' : 'text-slate-300'}>{diagnostics?.playback || 'idle'}</strong>
-                  </span>
-                  <span>
-                    Duplicate User Turns Blocked: <strong className="text-emerald-400">{diagnostics?.duplicateUserTurnsBlocked || 0}</strong>
-                  </span>
-                  <span>
-                    Duplicate Assistant Turns Blocked: <strong className="text-blue-400">{diagnostics?.duplicateAssistantTurnsBlocked || 0}</strong>
-                  </span>
+                  <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
+                    <p className="text-slate-400 text-[10px]">Playback</p>
+                    <p
+                      className={`font-semibold ${
+                        diagnostics?.playback === 'playing' ? 'text-blue-400 animate-pulse' : 'text-slate-300'
+                      }`}
+                    >
+                      {diagnostics?.playback || 'idle'}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
+                    <p className="text-slate-400 text-[10px]">Turns Blocked</p>
+                    <p className="text-slate-300 font-semibold">
+                      {diagnostics?.duplicateUserTurnsBlocked || 0} u / {diagnostics?.duplicateAssistantTurnsBlocked || 0} a
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
