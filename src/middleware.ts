@@ -39,8 +39,8 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // 1. DASHBOARD & SETTINGS ACCESS CONTROL
-  if (pathname.startsWith('/dashboard') || pathname.startsWith('/settings')) {
+  // 1. DASHBOARD, SETTINGS & LEADS ACCESS CONTROL
+  if (pathname.startsWith('/dashboard') || pathname.startsWith('/settings') || pathname.startsWith('/leads')) {
     if (!user) {
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = '/login';
@@ -117,6 +117,7 @@ export const config = {
      */
     '/dashboard/:path*',
     '/settings/:path*',
+    '/leads/:path*',
     '/onboarding/:path*',
     '/login',
   ],

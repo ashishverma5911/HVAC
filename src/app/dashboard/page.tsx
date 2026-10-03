@@ -133,6 +133,12 @@ export default function DashboardPage() {
               {isRealContractor ? (
                 <>
                   <Link
+                    href="/leads"
+                    className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg shadow-2xs transition inline-flex items-center gap-1"
+                  >
+                    <span>Leads Workspace</span>
+                  </Link>
+                  <Link
                     href="/settings"
                     className="text-xs font-medium text-slate-600 hover:text-blue-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs transition"
                   >
@@ -194,7 +200,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 /* Recent Leads Table */
-                <RecentLeadsTable leads={leads} />
+                <RecentLeadsTable leads={leads} isRealContractor={Boolean(isRealContractor)} />
               )}
             </>
           )}

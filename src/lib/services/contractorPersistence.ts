@@ -321,4 +321,46 @@ export class ContractorPersistenceService {
       isDuplicate: false,
     };
   }
+
+  /**
+   * Persists an audit/telemetry event to call_events.
+   * Used for simplified tool event visibility in contractor mode.
+   */
+  static async persistCallEvent(
+    businessId: string,
+    rawConversationId: string,
+    eventType: string,
+    payload: Record<string, unknown>
+  ): Promise<string | null> {
+    if (!businessId) return null;
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return `EVT-${Date.now().toString().slice(-4)}`;
+    }
+
+    try {
+      const convUuid = await this.ensureConversation(businessId, rawConversationId);
+      const admin = createAdminClient();
+
+      const { data, error } = await admin
+        .from('call_events')
+        .insert({
+          conversation_id: convUuid,
+          business_id: businessId,
+          event_type: eventType,
+          payload: JSON.parse(JSON.stringify(payload)),
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('[ContractorPersistence] Failed to persist call event:', error);
+        return null;
+      }
+
+      return data?.id || null;
+    } catch (err) {
+      console.error('[ContractorPersistence] Event persistence error:', err);
+      return null;
+    }
+  }
 }

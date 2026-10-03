@@ -157,6 +157,17 @@ export async function executeAgentToolAsync(
         } else {
           output = mockStore.checkServiceArea(context.conversationId, city, zip);
         }
+
+        if (context.businessId && !isDemoMode) {
+          const isSupp = Boolean((output as Record<string, unknown>)?.supported);
+          ContractorPersistenceService.persistCallEvent(context.businessId, context.conversationId, 'tool_audit', {
+            tool: 'check_service_area',
+            summary: isSupp
+              ? `Service area checked — ${city || zip || 'Primary area'} (Passed)`
+              : `Service area checked — ${city || zip || 'Unknown'} (Out of Area)`,
+            status: isSupp ? 'passed' : 'rejected',
+          }).catch(() => {});
+        }
         break;
       }
 
@@ -210,6 +221,18 @@ export async function executeAgentToolAsync(
               isDuplicate: persistenceResult.isDuplicate,
               message: `Service lead created successfully for ${customerName} (${config.name}).`,
             };
+
+            ContractorPersistenceService.persistCallEvent(
+              context.businessId!,
+              context.conversationId,
+              'tool_audit',
+              {
+                tool: 'create_lead',
+                summary: `Lead created — ${persistenceResult.leadId}`,
+                status: 'created',
+                leadId: persistenceResult.leadId,
+              }
+            ).catch(() => {});
           } catch (dbErr: unknown) {
             console.error('[ToolExecutor] Failed to persist contractor lead:', dbErr);
             throw new Error('Database persistence failed while recording service lead.');
@@ -228,6 +251,22 @@ export async function executeAgentToolAsync(
           urgency,
           preferredDate,
         });
+
+        if (context.businessId && !isDemoMode) {
+          const slots = (output as Record<string, unknown>)?.slots;
+          const count = Array.isArray(slots) ? slots.length : 0;
+          ContractorPersistenceService.persistCallEvent(
+            context.businessId,
+            context.conversationId,
+            'tool_audit',
+            {
+              tool: 'get_available_slots',
+              summary: `Availability checked — ${count} slots found`,
+              status: 'retrieved',
+              slotCount: count,
+            }
+          ).catch(() => {});
+        }
         break;
       }
 
@@ -268,6 +307,19 @@ export async function executeAgentToolAsync(
               isDuplicate: apptResult.isDuplicate,
               message: `Appointment requested for ${preferredSlot}. A dispatcher from ${config.name} will follow up to confirm.`,
             };
+
+            ContractorPersistenceService.persistCallEvent(
+              context.businessId!,
+              context.conversationId,
+              'tool_audit',
+              {
+                tool: 'request_appointment',
+                summary: `Appointment request — Requested for ${preferredSlot}`,
+                status: 'requested',
+                appointmentId: apptResult.appointmentId,
+                leadId,
+              }
+            ).catch(() => {});
           } catch (dbErr: unknown) {
             console.error('[ToolExecutor] Failed to persist contractor appointment:', dbErr);
             throw new Error('Database persistence failed while requesting appointment.');
@@ -303,6 +355,20 @@ export async function executeAgentToolAsync(
             instructions,
             message: `Call is being transferred to a human representative at ${transferPhone}.`,
           };
+
+          if (context.businessId) {
+            ContractorPersistenceService.persistCallEvent(
+              context.businessId,
+              context.conversationId,
+              'tool_audit',
+              {
+                tool: 'transfer_to_human',
+                summary: `Human transfer — Initiated for ${urgency} (${reason || 'Customer request'})`,
+                status: 'transferred',
+                transferPhone,
+              }
+            ).catch(() => {});
+          }
         }
         break;
       }

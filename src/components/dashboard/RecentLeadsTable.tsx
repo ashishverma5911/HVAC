@@ -1,15 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { DashboardLead, UrgencyLevel, LeadStatus } from '@/types';
 import { formatLeadStatus, formatUrgency } from '@/lib/utils';
-import { Search, Filter, Phone, MapPin, Wrench, Clock, Eye } from 'lucide-react';
+import { Search, Filter, Phone, MapPin, Wrench, Clock, Eye, ArrowRight } from 'lucide-react';
 
 interface RecentLeadsTableProps {
   leads: DashboardLead[];
+  isRealContractor?: boolean;
 }
 
-export const RecentLeadsTable: React.FC<RecentLeadsTableProps> = ({ leads }) => {
+export const RecentLeadsTable: React.FC<RecentLeadsTableProps> = ({ leads, isRealContractor = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterUrgency, setFilterUrgency] = useState<string>('all');
   const [selectedLead, setSelectedLead] = useState<DashboardLead | null>(null);
@@ -135,14 +137,24 @@ export const RecentLeadsTable: React.FC<RecentLeadsTableProps> = ({ leads }) => 
                       {lead.timeReceived}
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedLead(lead)}
-                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium text-xs px-2 py-1 rounded hover:bg-blue-50 transition"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        <span>Details</span>
-                      </button>
+                      {isRealContractor ? (
+                        <Link
+                          href={`/leads/${lead.id}`}
+                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-semibold text-xs px-2 py-1 rounded hover:bg-blue-50 transition"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>View Detail</span>
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLead(lead)}
+                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium text-xs px-2 py-1 rounded hover:bg-blue-50 transition"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>Details</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -155,7 +167,13 @@ export const RecentLeadsTable: React.FC<RecentLeadsTableProps> = ({ leads }) => 
       {/* Table Footer */}
       <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
         <span>Showing {filteredLeads.length} of {leads.length} recorded leads</span>
-        <span className="font-mono text-[11px]">Local Mock Storage • No Database Connected</span>
+        {isRealContractor ? (
+          <span className="font-mono text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
+            Live Database Connected • Supabase Tenant Scoped
+          </span>
+        ) : (
+          <span className="font-mono text-[11px]">Local Mock Storage • No Database Connected</span>
+        )}
       </div>
 
       {/* Details Modal */}

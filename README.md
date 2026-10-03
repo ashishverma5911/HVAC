@@ -17,11 +17,49 @@ AERIS AI Receptionist is an automated, 24/7 receptionist product that answers in
 - **Phase 3 (Gemini 3.8 Flash Chat)**: Multi-turn conversational intelligence, safety escalation, entity extraction, and intent classification.
 - **Phase 4 (Agent Tools & Function Calling)**: Server-validated tool execution (`check_service_area`, `create_lead`, `get_available_slots`, `request_appointment`, `transfer_to_human`, `check_business_hours`), slot validation, and idempotency protection.
 - **Phase 5 (Real-Time Browser Voice)**: Real-time two-way browser voice conversation using **Google Gemini 3.8 Live** (`gemini-3.8-live`), Web Audio API, ephemeral security tokens, and instant barge-in/interruption.
-- **Phase 6 (Real US Telephone / Twilio Integration — Active)**: Inbound telephone calls via Twilio Voice Media Streams, real-time 8kHz G.711 μ-law audio transcoding, multi-call concurrency, HMAC-SHA1 webhook security, and live telephony dashboard.
+- **Phase 6 (Real US Telephone / Twilio Integration)**: Inbound telephone calls via Twilio Voice Media Streams, real-time 8kHz G.711 μ-law audio transcoding, multi-call concurrency, HMAC-SHA1 webhook security, and live telephony dashboard.
+- **Phase 7 (Multi-Tenant Production Infrastructure & Lead Management)**:
+  - Step 1: Multi-tenant schema with PostgreSQL RLS & `get_auth_business_id()`.
+  - Step 2: Dynamic AERIS engine runtime refactor with tenant resolution and demo sandbox isolation.
+  - Step 3: Contractor authentication, atomic onboarding, and route protection.
+  - Step 4: Real database persistence, KPI querying, and idempotent tool ingestion.
+  - Step 5: Contractor settings UI & business territory configuration.
+  - Step 6: Daily lead management console, conversation history inspection, simplified AI tool event audit logs, deterministic pagination, and server-side filtering.
 
 ---
 
-## 2. Phase 5: Real-Time Browser Voice Architecture
+## 2. Phase 7: Conversation & Lead Management Architecture
+
+### Lead Lifecycle
+AERIS models the complete inbound customer journey using five explicit, server-validated statuses:
+1. `new`: Raw customer inquiry initiated through inbound chat, browser voice, or telephony.
+2. `qualified`: All required fields (customer name, phone, service address, service type, reported issue) collected and validated by `create_lead`.
+3. `appointment_requested`: Customer selected an available inspection window via `request_appointment`.
+4. `transferred`: Caller escalated to human dispatch via `transfer_to_human` due to emergencies, safety risks, or customer preference.
+5. `completed`: Dispatcher/contractor resolved or serviced the customer ticket.
+
+### Conversation & Audio Storage Policy
+- **Zero Audio Storage**: AERIS persists **only** conversational text transcripts and structured extraction tokens. Audio bytes are never written to the database or stored on disk.
+- **Explicit Database Linkage**: Leads and conversations are linked explicitly via `leads.conversation_id` and `conversations.lead_id` utilizing stable UUIDs.
+- **AI Action Audit Timeline**: Simplified audit events are logged in `call_events` when tools execute (`check_service_area`, `create_lead`, `get_available_slots`, `request_appointment`, `transfer_to_human`), giving contractors an immediate, clean view of what AERIS evaluated.
+
+### Appointment Status Semantics
+- **Strict Invariant**: Appointments created by the AI receptionist are persisted and displayed strictly as **`requested`**.
+- Status is **NEVER** marked as `confirmed`. A real contractor dispatcher or technician confirms bookings according to internal scheduling and technician availability.
+
+### Server-Safe Search, Filtering & Pagination
+- **Filtering**: Server-side filtering by `status`, `urgency`, `serviceType`, `city`, and case-insensitive search across customer names, phone numbers, and street addresses.
+- **Deterministic Pagination**: Paginated via `page` and `limit` (max 50) using `created_at DESC` and `id DESC` as a stable tie-breaker to prevent phantom shifts.
+
+### Tenant Isolation & Security Model
+- **Zero Client Trust**: Browser-supplied `business_id` is never trusted or consulted.
+- **Server Derivation**: Every lead, conversation, and appointment query derives the target contractor's `business_id` exclusively from `users.business_id` of the authenticated Supabase session.
+- **Cross-Tenant Concealment**: Requests for records belonging to another contractor return `404 Not Found`, ensuring cross-tenant record existence is never disclosed.
+- **Demo Isolation**: Anonymous visitors accessing the Summit HVAC demo interact exclusively with in-memory `mockStore` with zero database writes.
+
+---
+
+## 3. Phase 5: Real-Time Browser Voice Architecture
 
 ```
 User Microphone
