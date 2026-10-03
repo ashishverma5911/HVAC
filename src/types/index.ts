@@ -168,6 +168,8 @@ export interface BusinessProfile {
   phoneDisplay: string;
 }
 
+export * from '@/lib/ai/contractorConfig';
+
 export interface DemoScenario {
   id: string;
   title: string;

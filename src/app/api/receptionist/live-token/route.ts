@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI, Modality } from '@google/genai';
-import { RECEPTIONIST_TOOLS } from '@/lib/ai/tools';
-import { SUMMIT_HVAC_SYSTEM_INSTRUCTION } from '@/lib/ai/receptionistPrompt';
+import { buildReceptionistTools } from '@/lib/ai/tools';
+import { buildReceptionistSystemInstruction } from '@/lib/ai/receptionistPrompt';
+import { resolveTenantContext } from '@/lib/auth/tenant';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +41,16 @@ export async function POST(req: Request) {
 
     const liveModel = process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live';
 
+    // 1. Resolve tenant context server-side
+    // SAFEGUARD 1: If authenticated user has missing business profile, return 403 (do NOT fall back to demo)
+    const tenant = await resolveTenantContext();
+    if (!tenant.success) {
+      return NextResponse.json(
+        { error: tenant.error, category: tenant.category },
+        { status: tenant.status }
+      );
+    }
+
     // Parse optional body for session metadata
     let conversationId = `conv-${Date.now()}`;
     try {
@@ -50,6 +61,10 @@ export async function POST(req: Request) {
     } catch {
       // Body is optional
     }
+
+    // Build dynamic system instruction & tool definitions reflecting contractor configuration
+    const systemInstructionText = buildReceptionistSystemInstruction(tenant.config);
+    const dynamicTools = buildReceptionistTools(tenant.config);
 
     // Initialize server-side GoogleGenAI client on v1alpha for ephemeral tokens
     const serverAi = new GoogleGenAI({
@@ -92,9 +107,9 @@ export async function POST(req: Request) {
                   },
                 },
                 systemInstruction: {
-                  parts: [{ text: SUMMIT_HVAC_SYSTEM_INSTRUCTION }],
+                  parts: [{ text: systemInstructionText }],
                 },
-                tools: [{ functionDeclarations: RECEPTIONIST_TOOLS }],
+                tools: [{ functionDeclarations: dynamicTools }],
                 inputAudioTranscription: {},
                 outputAudioTranscription: {},
               },
@@ -161,6 +176,9 @@ export async function POST(req: Request) {
       model: liveModel,
       expireTime: token.expireTime || expireTime,
       conversationId,
+      businessId: tenant.businessId || tenant.config.id,
+      businessName: tenant.config.name,
+      isDemo: tenant.isDemo,
       durationMs,
     });
   } catch (error: unknown) {

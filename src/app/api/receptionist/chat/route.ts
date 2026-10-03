@@ -6,9 +6,10 @@ import {
   classifyGeminiError,
   FALLBACK_GEMINI_MODELS,
 } from '@/lib/ai/gemini';
-import { SUMMIT_HVAC_SYSTEM_INSTRUCTION } from '@/lib/ai/receptionistPrompt';
-import { RECEPTIONIST_TOOLS } from '@/lib/ai/tools';
+import { buildReceptionistSystemInstruction } from '@/lib/ai/receptionistPrompt';
+import { buildReceptionistTools } from '@/lib/ai/tools';
 import { executeAgentTool } from '@/lib/ai/toolExecutor';
+import { resolveTenantContext } from '@/lib/auth/tenant';
 import { mockStore, resolveAppointmentSlot } from '@/lib/mock/store';
 import {
   validateIntent,
@@ -37,6 +38,16 @@ import {
 
 export async function POST(req: NextRequest) {
   try {
+    // 1. Resolve server-side tenant context
+    // SAFEGUARD 1: Authenticated user with missing business returns 403 (does NOT fall back to demo)
+    const tenant = await resolveTenantContext();
+    if (!tenant.success) {
+      return NextResponse.json(
+        { error: tenant.error, category: tenant.category },
+        { status: tenant.status }
+      );
+    }
+
     let body: ChatApiRequest;
     try {
       body = await req.json();
@@ -123,7 +134,12 @@ export async function POST(req: NextRequest) {
 
     // Helper to run action if not already in session/executedActions
     const runServerAction = (toolName: string, args: Record<string, unknown>) => {
-      const res = executeAgentTool(toolName, args, { conversationId });
+      const res = executeAgentTool(toolName, args, {
+        conversationId,
+        businessConfig: tenant.config,
+        businessId: tenant.businessId,
+        isDemo: tenant.isDemo,
+      });
       const existingIdx = executedActions.findIndex((a) => a.toolName === toolName);
       if (existingIdx >= 0) {
         executedActions[existingIdx] = res.action;
@@ -143,7 +159,7 @@ export async function POST(req: NextRequest) {
     // If service area check completed and location is unsupported, trigger transfer_to_human immediately
     if (session.serviceAreaChecked && !session.serviceAreaSupported && !session.transferId) {
       runServerAction('transfer_to_human', {
-        reason: `Customer location (${candidateCity || areaToCheck || 'unsupported location'}) is outside Summit HVAC service area`,
+        reason: `Customer location (${candidateCity || areaToCheck || 'unsupported location'}) is outside ${tenant.config.name} service area`,
         urgency: candidateUrgency,
         summary: `Caller is in unsupported location (${candidateCity || areaToCheck}). Transferred to human dispatch for referral or special dispatch evaluation.`,
       });
@@ -266,8 +282,8 @@ export async function POST(req: NextRequest) {
               model: candidateModel,
               contents: currentContents,
               config: {
-                systemInstruction: SUMMIT_HVAC_SYSTEM_INSTRUCTION,
-                tools: [{ functionDeclarations: RECEPTIONIST_TOOLS }],
+                systemInstruction: buildReceptionistSystemInstruction(tenant.config),
+                tools: [{ functionDeclarations: buildReceptionistTools(tenant.config) }],
               },
             });
 
