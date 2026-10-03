@@ -133,7 +133,7 @@ export default function DashboardPage() {
               {isRealContractor ? (
                 <>
                   <Link
-                    href="/onboarding"
+                    href="/settings"
                     className="text-xs font-medium text-slate-600 hover:text-blue-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs transition"
                   >
                     Contractor Settings

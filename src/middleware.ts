@@ -39,8 +39,8 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // 1. DASHBOARD ACCESS CONTROL
-  if (pathname.startsWith('/dashboard')) {
+  // 1. DASHBOARD & SETTINGS ACCESS CONTROL
+  if (pathname.startsWith('/dashboard') || pathname.startsWith('/settings')) {
     if (!user) {
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = '/login';
@@ -113,9 +113,10 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match dashboard, onboarding, login routes, and exclude static assets
+     * Match dashboard, settings, onboarding, login routes, and exclude static assets
      */
     '/dashboard/:path*',
+    '/settings/:path*',
     '/onboarding/:path*',
     '/login',
   ],
