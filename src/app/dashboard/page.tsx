@@ -8,7 +8,8 @@ import { Footer } from '@/components/landing/Footer';
 import { MetricCards } from '@/components/dashboard/MetricCards';
 import { RecentLeadsTable } from '@/components/dashboard/RecentLeadsTable';
 import { mockDashboardMetrics, mockRecentLeads } from '@/mock/dashboardData';
-import { ArrowLeft, Building2, LogOut, Sparkles, CheckCircle2 } from 'lucide-react';
+import { DashboardLead, DashboardMetrics } from '@/types';
+import { ArrowLeft, Building2, LogOut, Sparkles, CheckCircle2, Loader2, PhoneCall } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function DashboardPage() {
@@ -20,17 +21,57 @@ export default function DashboardPage() {
     user?: { email?: string };
   } | null>(null);
 
+  const [loadingData, setLoadingData] = useState<boolean>(true);
+  const [metrics, setMetrics] = useState<DashboardMetrics>(mockDashboardMetrics);
+  const [leads, setLeads] = useState<DashboardLead[]>(mockRecentLeads);
+
   useEffect(() => {
-    async function loadStatus() {
+    async function loadDashboard() {
       try {
         const res = await fetch('/api/auth/status');
-        const data = await res.json();
-        setAuthStatus(data);
+        const authData = await res.json();
+        setAuthStatus(authData);
+
+        if (authData.authenticated && authData.hasBusiness) {
+          // Fetch live database metrics and recent leads
+          const dashRes = await fetch('/api/contractor/dashboard');
+          if (dashRes.ok) {
+            const dashData = await dashRes.json();
+            if (dashData.success) {
+              setMetrics({
+                callsToday: dashData.metrics.totalCalls,
+                leads: dashData.metrics.totalLeads,
+                appointments: dashData.metrics.appointmentsRequested,
+                urgentRequests: dashData.metrics.urgentRequests,
+              });
+
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const mappedLeads: DashboardLead[] = (dashData.recentLeads || []).map((l: any) => ({
+                id: l.id,
+                customerName: l.customer_name,
+                service: l.service_type,
+                city: l.city_area || l.service_address || 'Service Area',
+                urgency: l.urgency,
+                status: l.status,
+                timeReceived: new Date(l.created_at).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+                phone: l.phone,
+                notes: l.reported_issue,
+              }));
+              setLeads(mappedLeads);
+            }
+          }
+        }
       } catch (err) {
-        console.error('Failed to load auth status in dashboard:', err);
+        console.error('Failed to load dashboard data:', err);
+      } finally {
+        setLoadingData(false);
       }
     }
-    loadStatus();
+
+    loadDashboard();
   }, []);
 
   const handleSignOut = async () => {
@@ -122,10 +163,41 @@ export default function DashboardPage() {
           </div>
 
           {/* Metric KPIs */}
-          <MetricCards metrics={mockDashboardMetrics} />
+          {loadingData ? (
+            <div className="py-12 flex justify-center items-center">
+              <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+            </div>
+          ) : (
+            <>
+              <MetricCards metrics={metrics} />
 
-          {/* Recent Leads Table */}
-          <RecentLeadsTable leads={mockRecentLeads} />
+              {/* Zero-State for Fresh Contractors */}
+              {isRealContractor && leads.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-4 shadow-xs">
+                  <div className="h-12 w-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+                    <PhoneCall className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">No Inbound Leads Yet</h3>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                      Your AERIS AI Receptionist is configured and ready. Inbound customer calls and chats will be
+                      automatically qualified, recorded, and dispatched here.
+                    </p>
+                  </div>
+                  <Link
+                    href="/#interactive-demo"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition"
+                  >
+                    <PhoneCall className="h-3.5 w-3.5" />
+                    <span>Test Inbound Intake</span>
+                  </Link>
+                </div>
+              ) : (
+                /* Recent Leads Table */
+                <RecentLeadsTable leads={leads} />
+              )}
+            </>
+          )}
         </div>
       </main>
 

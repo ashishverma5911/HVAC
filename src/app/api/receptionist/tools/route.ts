@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { executeAgentTool } from '@/lib/ai/toolExecutor';
+import { executeAgentToolAsync } from '@/lib/ai/toolExecutor';
 import { resolveTenantContext } from '@/lib/auth/tenant';
 
 export const dynamic = 'force-dynamic';
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     // SAFEGUARD 2 & 3:
     // - Pass server-resolved businessConfig and isDemo flag
     // - Client or LLM-supplied business_id cannot override the verified context
-    const result = executeAgentTool(toolName, toolArgs, {
+    const result = await executeAgentToolAsync(toolName, toolArgs, {
       conversationId,
       businessConfig: tenant.config,
       businessId: tenant.businessId,

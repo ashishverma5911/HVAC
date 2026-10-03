@@ -8,8 +8,9 @@ import {
 } from '@/lib/ai/gemini';
 import { buildReceptionistSystemInstruction } from '@/lib/ai/receptionistPrompt';
 import { buildReceptionistTools } from '@/lib/ai/tools';
-import { executeAgentTool } from '@/lib/ai/toolExecutor';
+import { executeAgentToolAsync } from '@/lib/ai/toolExecutor';
 import { resolveTenantContext } from '@/lib/auth/tenant';
+import { ContractorPersistenceService } from '@/lib/services/contractorPersistence';
 import { mockStore, resolveAppointmentSlot } from '@/lib/mock/store';
 import {
   validateIntent,
@@ -133,8 +134,8 @@ export async function POST(req: NextRequest) {
     const executedActions: AgentAction[] = [];
 
     // Helper to run action if not already in session/executedActions
-    const runServerAction = (toolName: string, args: Record<string, unknown>) => {
-      const res = executeAgentTool(toolName, args, {
+    const runServerAction = async (toolName: string, args: Record<string, unknown>) => {
+      const res = await executeAgentToolAsync(toolName, args, {
         conversationId,
         businessConfig: tenant.config,
         businessId: tenant.businessId,
@@ -153,12 +154,12 @@ export async function POST(req: NextRequest) {
     // Check service area if city or street address mentions an area
     const areaToCheck = candidateCity || candidateStreet;
     if (areaToCheck && !session.serviceAreaChecked) {
-      runServerAction('check_service_area', { city: areaToCheck });
+      await runServerAction('check_service_area', { city: areaToCheck });
     }
 
     // If service area check completed and location is unsupported, trigger transfer_to_human immediately
     if (session.serviceAreaChecked && !session.serviceAreaSupported && !session.transferId) {
-      runServerAction('transfer_to_human', {
+      await runServerAction('transfer_to_human', {
         reason: `Customer location (${candidateCity || areaToCheck || 'unsupported location'}) is outside ${tenant.config.name} service area`,
         urgency: candidateUrgency,
         summary: `Caller is in unsupported location (${candidateCity || areaToCheck}). Transferred to human dispatch for referral or special dispatch evaluation.`,
@@ -176,9 +177,9 @@ export async function POST(req: NextRequest) {
     ) {
       // Ensure service area checked first
       if (!session.serviceAreaChecked) {
-        runServerAction('check_service_area', { city: candidateStreet });
+        await runServerAction('check_service_area', { city: candidateStreet });
       }
-      runServerAction('create_lead', {
+      await runServerAction('create_lead', {
         customerName: candidateName,
         phone: candidatePhone,
         serviceAddress: candidateStreet,
@@ -196,7 +197,7 @@ export async function POST(req: NextRequest) {
       );
 
     if (isAppointmentInquiry && !session.slotsChecked) {
-      runServerAction('get_available_slots', {
+      await runServerAction('get_available_slots', {
         serviceType: candidateServiceType || 'AC Repair',
         urgency: candidateUrgency,
         preferredDate: candidateAppt || undefined,
@@ -213,12 +214,20 @@ export async function POST(req: NextRequest) {
     if (matchedSlot && session.leadId && session.slotsChecked && !session.appointmentId) {
       const lead = mockStore.getLead(session.leadId);
       if (lead) {
-        runServerAction('request_appointment', {
+        await runServerAction('request_appointment', {
           leadId: lead.id,
           preferredSlot: matchedSlot,
           customerName: lead.customerName,
           phone: lead.phone,
           serviceAddress: lead.serviceAddress,
+        });
+      } else {
+        await runServerAction('request_appointment', {
+          leadId: session.leadId,
+          preferredSlot: matchedSlot,
+          customerName: candidateName || '',
+          phone: candidatePhone || '',
+          serviceAddress: candidateStreet || '',
         });
       }
     }
@@ -230,7 +239,7 @@ export async function POST(req: NextRequest) {
       );
 
     if (isTransferRequest && !session.transferId) {
-      runServerAction('transfer_to_human', {
+      await runServerAction('transfer_to_human', {
         reason: 'Customer requested human representative',
         urgency: candidateUrgency,
         summary: `Caller requested human transfer. Prior problem: ${candidateIssue || 'HVAC inquiry'}.`,
@@ -313,7 +322,7 @@ export async function POST(req: NextRequest) {
                   continue;
                 }
 
-                const execResult = runServerAction(
+                const execResult = await runServerAction(
                   toolName,
                   (fc.args || {}) as Record<string, unknown>
                 );
@@ -495,6 +504,26 @@ export async function POST(req: NextRequest) {
       leadStatus: computedLeadStatus,
       detectedIntent,
     });
+
+    // 5. In Contractor Mode, persist user message and assistant reply to Supabase (ZERO audio stored)
+    if (!tenant.isDemo && tenant.businessId) {
+      ContractorPersistenceService.persistMessage(
+        tenant.businessId,
+        conversationId,
+        'customer',
+        lastMessage.content
+      ).catch((e) => console.error('Failed to persist customer message:', e));
+
+      if (finalReply) {
+        ContractorPersistenceService.persistMessage(
+          tenant.businessId,
+          conversationId,
+          'ai',
+          finalReply,
+          currentData ? (currentData as Record<string, unknown>) : undefined
+        ).catch((e) => console.error('Failed to persist AI message:', e));
+      }
+    }
 
     const apiResponse: ChatApiResponse = {
       message: finalReply,

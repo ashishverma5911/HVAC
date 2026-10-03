@@ -135,108 +135,112 @@ assert(Boolean(serviceAreaToolB.description?.includes('Phoenix, Scottsdale')), '
 // -----------------------------------------------------------------------------
 // TEST 4: Business-Scoped Tool Execution Behavior
 // -----------------------------------------------------------------------------
-console.log('\n--- TEST 4: Business-Scoped Tool Execution Behavior ---');
+async function runToolTests() {
+  console.log('\n--- TEST 4: Business-Scoped Tool Execution Behavior ---');
 
-// City check: Plano
-const resPlanoA = executeAgentTool('check_service_area', { city: 'Plano' }, {
-  conversationId: 'test-conv-1',
-  businessConfig: contractorA,
-  isDemo: false,
-});
-assert(resPlanoA.success && resPlanoA.output?.supported === true, 'Plano is supported for Contractor A (ABC Cooling)');
+  // City check: Plano
+  const resPlanoA = await executeAgentTool('check_service_area', { city: 'Plano' }, {
+    conversationId: 'test-conv-1',
+    businessConfig: contractorA,
+    isDemo: false,
+  });
+  assert(resPlanoA.success && resPlanoA.output?.supported === true, 'Plano is supported for Contractor A (ABC Cooling)');
 
-const resPlanoB = executeAgentTool('check_service_area', { city: 'Plano' }, {
-  conversationId: 'test-conv-2',
-  businessConfig: contractorB,
-  isDemo: false,
-});
-assert(resPlanoB.success && resPlanoB.output?.supported === false, 'Plano is NOT supported for Contractor B (Desert Air)');
+  const resPlanoB = await executeAgentTool('check_service_area', { city: 'Plano' }, {
+    conversationId: 'test-conv-2',
+    businessConfig: contractorB,
+    isDemo: false,
+  });
+  assert(resPlanoB.success && resPlanoB.output?.supported === false, 'Plano is NOT supported for Contractor B (Desert Air)');
 
-// City check: Phoenix
-const resPhoenixA = executeAgentTool('check_service_area', { city: 'Phoenix' }, {
-  conversationId: 'test-conv-3',
-  businessConfig: contractorA,
-  isDemo: false,
-});
-assert(resPhoenixA.success && resPhoenixA.output?.supported === false, 'Phoenix is NOT supported for Contractor A');
+  // City check: Phoenix
+  const resPhoenixA = await executeAgentTool('check_service_area', { city: 'Phoenix' }, {
+    conversationId: 'test-conv-3',
+    businessConfig: contractorA,
+    isDemo: false,
+  });
+  assert(resPhoenixA.success && resPhoenixA.output?.supported === false, 'Phoenix is NOT supported for Contractor A');
 
-const resPhoenixB = executeAgentTool('check_service_area', { city: 'Phoenix' }, {
-  conversationId: 'test-conv-4',
-  businessConfig: contractorB,
-  isDemo: false,
-});
-assert(resPhoenixB.success && resPhoenixB.output?.supported === true, 'Phoenix is supported for Contractor B');
+  const resPhoenixB = await executeAgentTool('check_service_area', { city: 'Phoenix' }, {
+    conversationId: 'test-conv-4',
+    businessConfig: contractorB,
+    isDemo: false,
+  });
+  assert(resPhoenixB.success && resPhoenixB.output?.supported === true, 'Phoenix is supported for Contractor B');
 
-// Business Hours & Emergency Check
-const hoursResA = executeAgentTool('check_business_hours', {}, {
-  conversationId: 'test-conv-5',
-  businessConfig: contractorA,
-  isDemo: false,
-});
-assert(hoursResA.output?.operatingHours === '8:00 AM – 6:00 PM', 'Contractor A operating hours match 8:00 AM – 6:00 PM');
-assert(hoursResA.output?.emergencyAvailable === true, 'Contractor A emergency service is enabled');
+  // Business Hours & Emergency Check
+  const hoursResA = await executeAgentTool('check_business_hours', {}, {
+    conversationId: 'test-conv-5',
+    businessConfig: contractorA,
+    isDemo: false,
+  });
+  assert(hoursResA.output?.operatingHours === '8:00 AM – 6:00 PM', 'Contractor A operating hours match 8:00 AM – 6:00 PM');
+  assert(hoursResA.output?.emergencyAvailable === true, 'Contractor A emergency service is enabled');
 
-const hoursResB = executeAgentTool('check_business_hours', {}, {
-  conversationId: 'test-conv-6',
-  businessConfig: contractorB,
-  isDemo: false,
-});
-assert(hoursResB.output?.operatingHours === '7:00 AM – 7:00 PM', 'Contractor B operating hours match 7:00 AM – 7:00 PM');
-assert(hoursResB.output?.emergencyAvailable === false, 'Contractor B emergency service is disabled');
+  const hoursResB = await executeAgentTool('check_business_hours', {}, {
+    conversationId: 'test-conv-6',
+    businessConfig: contractorB,
+    isDemo: false,
+  });
+  assert(hoursResB.output?.operatingHours === '7:00 AM – 7:00 PM', 'Contractor B operating hours match 7:00 AM – 7:00 PM');
+  assert(hoursResB.output?.emergencyAvailable === false, 'Contractor B emergency service is disabled');
 
-// -----------------------------------------------------------------------------
-// TEST 5: Business Context Immutability & Client-Supplied Parameter Stripping
-// -----------------------------------------------------------------------------
-console.log('\n--- TEST 5: Business Context Immutability (Safeguard 3) ---');
-// Client attempts to pass a forged business_id or businessId in tool arguments
-const maliciousArgs = {
-  customerName: 'Alice Smith',
-  phone: '214-555-0199',
-  serviceAddress: '123 Main St, Plano',
-  serviceType: 'AC Repair',
-  reportedIssue: 'Not cooling',
-  urgency: 'normal',
-  business_id: 'forged-attacker-id-666',
-  businessId: 'forged-attacker-id-777',
-};
+  // -----------------------------------------------------------------------------
+  // TEST 5: Business Context Immutability & Client-Supplied Parameter Stripping
+  // -----------------------------------------------------------------------------
+  console.log('\n--- TEST 5: Business Context Immutability (Safeguard 3) ---');
+  // Client attempts to pass a forged business_id or businessId in tool arguments
+  const maliciousArgs = {
+    customerName: 'Alice Smith',
+    phone: '214-555-0199',
+    serviceAddress: '123 Main St, Plano',
+    serviceType: 'AC Repair',
+    reportedIssue: 'Not cooling',
+    urgency: 'normal',
+    business_id: 'forged-attacker-id-666',
+    businessId: 'forged-attacker-id-777',
+  };
 
-const leadRes = executeAgentTool('create_lead', maliciousArgs, {
-  conversationId: 'test-conv-7',
-  businessConfig: contractorA,
-  businessId: contractorA.id,
-  isDemo: false,
-});
+  const leadRes = await executeAgentTool('create_lead', maliciousArgs, {
+    conversationId: 'test-conv-7',
+    businessConfig: contractorA,
+    businessId: contractorA.id,
+    isDemo: false,
+  });
 
-assert(leadRes.success === true, 'Lead creation succeeded');
-assert(leadRes.output?.businessId === contractorA.id, 'Output businessId strictly reflects server-verified business context');
-assert(leadRes.action.input.business_id === undefined, 'Client-supplied business_id was stripped from tool action input');
-assert(leadRes.action.input.businessId === undefined, 'Client-supplied businessId was stripped from tool action input');
+  assert(leadRes.success === true, 'Lead creation succeeded');
+  assert(leadRes.output?.businessId === contractorA.id, 'Output businessId strictly reflects server-verified business context');
+  assert(leadRes.action.input.business_id === undefined, 'Client-supplied business_id was stripped from tool action input');
+  assert(leadRes.action.input.businessId === undefined, 'Client-supplied businessId was stripped from tool action input');
 
-// -----------------------------------------------------------------------------
-// TEST 6: Demo Mode Boundary (Safeguard 2)
-// -----------------------------------------------------------------------------
-console.log('\n--- TEST 6: Demo Mode Boundary (Safeguard 2) ---');
-// Demo execution uses DEFAULT_SUMMIT_HVAC_CONFIG and mockStore
-const demoLead = executeAgentTool('create_lead', {
-  customerName: 'Demo Tester',
-  phone: '214-555-0100',
-  serviceAddress: '1000 Main St, Dallas',
-  serviceType: 'AC Repair',
-  reportedIssue: 'AC making whistling noise',
-  urgency: 'normal',
-}, {
-  conversationId: 'demo-session-123',
-  isDemo: true,
-});
+  // -----------------------------------------------------------------------------
+  // TEST 6: Demo Mode Boundary (Safeguard 2)
+  // -----------------------------------------------------------------------------
+  console.log('\n--- TEST 6: Demo Mode Boundary (Safeguard 2) ---');
+  // Demo execution uses DEFAULT_SUMMIT_HVAC_CONFIG and mockStore
+  const demoLead = await executeAgentTool('create_lead', {
+    customerName: 'Demo Tester',
+    phone: '214-555-0100',
+    serviceAddress: '1000 Main St, Dallas',
+    serviceType: 'AC Repair',
+    reportedIssue: 'AC making whistling noise',
+    urgency: 'normal',
+  }, {
+    conversationId: 'demo-session-123',
+    isDemo: true,
+  });
 
-assert(demoLead.success === true, 'Demo lead created in mockStore');
-assert(demoLead.output?.leadId !== undefined, 'MockStore generated in-memory lead ID');
+  assert(demoLead.success === true, 'Demo lead created in mockStore');
+  assert(demoLead.output?.leadId !== undefined, 'MockStore generated in-memory lead ID');
 
-const demoHours = executeAgentTool('check_business_hours', {}, {
-  conversationId: 'demo-session-123',
-  isDemo: true,
-});
-assert(demoHours.output?.regularHours === 'Monday-Friday: 8:00 AM - 6:00 PM', 'Demo hours return Summit HVAC mock hours');
+  const demoHours = await executeAgentTool('check_business_hours', {}, {
+    conversationId: 'demo-session-123',
+    isDemo: true,
+  });
+  assert(demoHours.output?.regularHours === 'Monday-Friday: 8:00 AM - 6:00 PM', 'Demo hours return Summit HVAC mock hours');
+}
+
+runToolTests().then(() => {
 
 // -----------------------------------------------------------------------------
 // TEST 7: Authenticated User with Missing Business Profile (Safeguard 1)
@@ -292,3 +296,7 @@ assert((authenticatedNoBusiness as any).category === 'MISSING_BUSINESS_PROFILE',
 assert((authenticatedNoBusiness as any).isDemo === undefined, 'Does NOT fall back to demo sandbox');
 
 console.log('\n🎉 ALL STEP 2 DYNAMIC AERIS AI ENGINE TESTS PASSED! 🎉\n');
+}).catch((err) => {
+  console.error('Fatal error running Step 2 tests:', err);
+  process.exit(1);
+});
