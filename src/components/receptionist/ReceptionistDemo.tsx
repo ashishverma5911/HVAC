@@ -38,7 +38,7 @@ const initialEmptyCustomerInfo: CustomerInfo = {
 };
 
 const INITIAL_AI_GREETING =
-  "Hi, you've reached Summit HVAC. I'm the virtual AI receptionist. How can I help you today?";
+  "Hi, you've reached Summit HVAC. I'm AERIS, your AI receptionist. How can I help you today?";
 
 export const ReceptionistDemo: React.FC = () => {
   const [activeScenarioId, setActiveScenarioId] = useState<string>(demoScenarios[0].id);
@@ -417,23 +417,23 @@ export const ReceptionistDemo: React.FC = () => {
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold mb-2 border border-emerald-200">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping" />
-              <span>Phase 5: Real-Time Browser Voice (Gemini 3.8 Live)</span>
+              <span>Phase 5: Real-Time Browser Voice (AERIS)</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              HVAC AI Receptionist Live Voice &amp; Chat Simulator
+              AERIS AI Receptionist Live Voice &amp; Chat Simulator
             </h2>
             <p className="mt-1 text-sm text-slate-600 max-w-2xl">
-              Speak naturally through your microphone with Summit HVAC&apos;s real-time voice agent powered by Gemini 3.8 Live, or type customer inquiries to test.
+              Speak naturally through your microphone with Summit HVAC&apos;s real-time voice agent powered by AERIS Voice, or type customer inquiries to test.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <span className="text-xs text-slate-500 font-mono">
-              Live Voice: <strong className="text-emerald-700">gemini-3.8-live</strong>
+              Voice: <strong className="text-emerald-700">AERIS Voice</strong>
             </span>
             <span className="text-slate-300">|</span>
             <span className="text-xs text-slate-500 font-mono">
-              Chat: <strong className="text-slate-700">gemini-3.8-flash</strong>
+              Intelligence: <strong className="text-slate-700">AERIS AI</strong>
             </span>
           </div>
         </div>
@@ -490,7 +490,7 @@ export const ReceptionistDemo: React.FC = () => {
                 isCallActive={isCallActive}
                 detectedIntent={detectedIntent}
                 isThinking={isThinking || voiceState === 'PROCESSING'}
-                engineName={voiceState !== 'IDLE' ? 'Gemini 3.8 Live' : 'Gemini 3.8 Flash'}
+                engineName={voiceState !== 'IDLE' ? 'AERIS Voice' : 'AERIS Intelligence'}
                 voiceState={voiceState}
               />
 

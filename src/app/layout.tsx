@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'HVAC AI Receptionist | 24/7 Call Intake & Routing for HVAC Contractors',
+  title: 'AERIS AI Receptionist | 24/7 Call Intake & Routing for HVAC Contractors',
   description:
-    'An AI receptionist designed for US heating and air conditioning contractors. Understands reported HVAC issues, collects relevant information, and routes or escalates requests appropriately 24/7.',
+    'AERIS AI Receptionist designed for US heating and air conditioning contractors. Understands reported HVAC issues, collects relevant information, and routes or escalates requests appropriately 24/7.',
 };
 
 export default function RootLayout({

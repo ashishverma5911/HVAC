@@ -1,8 +1,8 @@
-# HVAC AI Receptionist (Phase 5 — Real-Time Browser Voice)
+# AERIS AI Receptionist (Powered by Google Gemini 3.8 Live & Flash)
 
 A purpose-built AI receptionist system engineered for small and independent US heating, ventilation, and air conditioning (HVAC) contractors.
 
-The core product idea is an automated, 24/7 receptionist that answers inbound customer calls, understands reported HVAC issues, collects verified customer details, qualifies leads, schedules inspection windows, and routes or escalates requests appropriately. It operates under strict non-diagnosis and non-hallucination policies: it never fabricates prices or warranties, never provides hazardous technical repair advice, and immediately escalates life-safety emergencies.
+AERIS AI Receptionist is an automated, 24/7 receptionist product that answers inbound customer calls, understands reported HVAC issues, collects verified customer details, qualifies leads, schedules inspection windows, and routes or escalates requests appropriately. Under the hood, AERIS AI leverages Google's Gemini API (Gemini 3.8 Live for native bi-directional voice and Gemini 3.8 Flash for text chat and extraction). It operates under strict non-diagnosis and non-hallucination policies: it never fabricates prices or warranties, never provides hazardous technical repair advice, and immediately escalates life-safety emergencies.
 
 > [!IMPORTANT]
 > **Operational Boundary & Non-Diagnosis Policy**:

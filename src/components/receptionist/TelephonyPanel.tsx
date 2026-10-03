@@ -147,7 +147,7 @@ export const TelephonyPanel: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Bridges inbound PSTN phone calls to Gemini 3.8 Live over 8kHz μ-law WebSockets
+                Bridges inbound PSTN phone calls to AERIS Voice over 8kHz μ-law WebSockets
               </p>
             </div>
           </div>
@@ -395,7 +395,7 @@ export const TelephonyPanel: React.FC = () => {
           <div className="bg-white/10 rounded-lg p-3 backdrop-blur-xs">
             <div className="font-bold text-emerald-400 mb-1">3. Dial the Phone Number</div>
             <p className="text-slate-300">
-              When Twilio calls the webhook, TwiML streams audio directly to <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">wss://PUBLIC_WS_BASE_URL/...</code> for real-time Gemini Live AI conversation.
+              When Twilio calls the webhook, TwiML streams audio directly to <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">wss://PUBLIC_WS_BASE_URL/...</code> for real-time AERIS Voice AI conversation.
             </p>
           </div>
         </div>

@@ -18,7 +18,7 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
   isCallActive,
   detectedIntent,
   isThinking = false,
-  engineName = 'Gemini 3.8 Flash',
+  engineName = 'AERIS Intelligence',
   voiceState,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -61,7 +61,7 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
             </div>
             <p className="font-medium text-slate-300">No active conversation</p>
             <p className="text-xs text-slate-400 mt-1 max-w-xs">
-              Type a customer message below or pick a preset inquiry to start a real Gemini AI conversation.
+              Type a customer message below or pick a preset inquiry to start an AERIS AI conversation.
             </p>
           </div>
         ) : (
@@ -105,7 +105,7 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
                         isAI ? 'text-blue-300' : 'text-blue-100'
                       }`}
                     >
-                      {isAI ? 'AI Receptionist (Summit HVAC)' : 'Customer'}
+                      {isAI ? 'AERIS AI Receptionist (Summit HVAC)' : 'Customer'}
                     </span>
                     <span
                       className={`font-mono text-[10px] ${
@@ -143,7 +143,7 @@ export const TranscriptArea: React.FC<TranscriptAreaProps> = ({
                 <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.15s]" />
                 <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-bounce" />
               </div>
-              <span className="text-slate-300">Gemini is processing response...</span>
+              <span className="text-slate-300">AERIS is processing response...</span>
             </div>
           </div>
         )}

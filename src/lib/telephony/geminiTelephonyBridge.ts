@@ -195,7 +195,7 @@ export class GeminiTelephonyBridge {
             role: 'user',
             parts: [
               {
-                text: "The phone call has just connected. Please greet the caller now with the standard Summit HVAC receptionist greeting.",
+                text: "The phone call has just connected. Please greet the caller now as AERIS with the standard Summit HVAC receptionist greeting.",
               },
             ],
           },

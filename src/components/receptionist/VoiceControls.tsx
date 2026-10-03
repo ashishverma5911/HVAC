@@ -81,7 +81,7 @@ export function VoiceControls({
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
             <Loader2 className="w-3 h-3 animate-spin" />
-            Connecting to Gemini Live...
+            Connecting to AERIS Voice...
           </span>
         );
       case 'LISTENING':
@@ -150,7 +150,7 @@ export function VoiceControls({
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
-            Real-Time Voice (Gemini 3.8 Live)
+            Real-Time Voice (AERIS)
           </button>
           <button
             type="button"
@@ -189,10 +189,10 @@ export function VoiceControls({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                    Browser Voice Prototype
+                    AERIS Voice
                   </span>
                   <span className="px-1.5 py-0.5 text-[10px] font-medium bg-slate-800 text-emerald-400 border border-emerald-500/30 rounded">
-                    gemini-3.8-live
+                    Real-Time AI
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400">

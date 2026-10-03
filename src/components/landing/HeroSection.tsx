@@ -28,7 +28,7 @@ export const HeroSection: React.FC = () => {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium mb-6">
             <Wrench className="h-3.5 w-3.5" />
-            <span>Designed for Small US HVAC Contractors</span>
+            <span>AERIS AI Receptionist for US HVAC Contractors</span>
           </div>
 
           {/* Headline */}
@@ -38,7 +38,7 @@ export const HeroSection: React.FC = () => {
 
           {/* Subheadline */}
           <p className="mt-6 text-lg sm:text-xl text-slate-600 leading-relaxed font-normal">
-            An AI receptionist that answers questions, captures leads, and helps
+            AERIS AI Receptionist answers questions, captures leads, and helps
             customers request service — 24/7.
           </p>
 
@@ -50,7 +50,7 @@ export const HeroSection: React.FC = () => {
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 rounded-lg bg-blue-600 px-6 py-3.5 text-base font-semibold text-white shadow-md hover:bg-blue-700 active:bg-blue-800 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             >
               <Bot className="h-5 w-5" />
-              <span>Try the AI Receptionist</span>
+              <span>Try AERIS AI Receptionist</span>
               <ArrowRight className="h-4 w-4 ml-0.5" />
             </Link>
 

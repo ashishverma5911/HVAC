@@ -12,7 +12,7 @@ export const TrustSection: React.FC = () => {
             Contractor Capabilities
           </h2>
           <p className="text-2xl sm:text-3xl font-bold text-slate-900">
-            How the AI Receptionist Supports Your Daily Field Operations
+            How AERIS AI Supports Your Daily Field Operations
           </p>
           <p className="mt-3 text-sm text-slate-600">
             Purpose-built to handle inbound HVAC calls clearly, understand reported issues, collect caller details, and route requests to your team.
@@ -97,7 +97,7 @@ export const TrustSection: React.FC = () => {
         <div className="mt-8 p-3.5 bg-slate-50 rounded-lg border border-slate-200 flex items-start gap-2.5 text-xs text-slate-600 max-w-3xl mx-auto">
           <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
           <p>
-            <strong className="text-slate-800">Operational Boundary:</strong> The AI receptionist understands reported HVAC issues, collects relevant information, and routes or escalates requests appropriately. It does not perform professional HVAC diagnosis, repair decisions, safety determinations, or technical instructions.
+            <strong className="text-slate-800">Operational Boundary:</strong> AERIS AI Receptionist understands reported HVAC issues, collects relevant information, and routes or escalates requests appropriately. It does not perform professional HVAC diagnosis, repair decisions, safety determinations, or technical instructions.
           </p>
         </div>
 
@@ -117,7 +117,7 @@ export const TrustSection: React.FC = () => {
               <span className="text-3xl font-black text-slate-200 mb-2 block">01</span>
               <h4 className="text-sm font-bold text-slate-900 mb-1">Customer Inbound Call</h4>
               <p className="text-xs text-slate-600">
-                Customer calls your business number. The AI receptionist answers within 1–2 rings with your custom company greeting.
+                Customer calls your business number. AERIS answers within 1–2 rings with your custom company greeting.
               </p>
             </div>
 
@@ -125,7 +125,7 @@ export const TrustSection: React.FC = () => {
               <span className="text-3xl font-black text-slate-200 mb-2 block">02</span>
               <h4 className="text-sm font-bold text-slate-900 mb-1">Issue Intake &amp; Routing</h4>
               <p className="text-xs text-slate-600">
-                The AI listens to the reported issue, collects service address and callback details, and notes urgency for your dispatchers.
+                AERIS listens to the reported issue, collects service address and callback details, and notes urgency for your dispatchers.
               </p>
             </div>
 

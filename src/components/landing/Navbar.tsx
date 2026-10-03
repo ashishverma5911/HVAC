@@ -37,10 +37,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute = 'home' }) => {
               PROTOTYPE MODE
             </span>
             <span className="hidden sm:inline text-slate-300">
-              Stage 3 — Real Gemini AI Conversation. Voice and phone telephony are simulated.
+              AERIS AI Receptionist — Real-Time Voice &amp; Chat Intake for HVAC Contractors.
             </span>
             <span className="sm:hidden text-slate-300">
-              Stage 3 — Real Gemini AI Conversation.
+              AERIS AI Receptionist
             </span>
           </div>
           <span className="text-[11px] text-slate-400">Summit HVAC Demo</span>
@@ -57,7 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute = 'home' }) => {
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="text-lg font-bold tracking-tight text-slate-900">
-                  HVAC AI
+                  AERIS AI
                 </span>
                 <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
                   Receptionist

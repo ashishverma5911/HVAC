@@ -34,7 +34,7 @@ export const RecentLeadsTable: React.FC<RecentLeadsTableProps> = ({ leads }) => 
         <div>
           <h3 className="text-base font-bold text-slate-900">Recent Customer Leads</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Inbound calls captured and qualified by Summit HVAC AI Receptionist
+            Inbound calls captured and qualified by AERIS AI Receptionist
           </p>
         </div>
 

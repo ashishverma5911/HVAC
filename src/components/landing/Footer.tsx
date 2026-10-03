@@ -12,14 +12,14 @@ export const Footer: React.FC = () => {
           <div className="md:col-span-2">
             <div className="flex items-center gap-2 text-white font-bold text-base mb-3">
               <Bot className="h-5 w-5 text-blue-400" />
-              <span>HVAC AI Receptionist</span>
+              <span>AERIS AI Receptionist</span>
             </div>
             <p className="text-slate-400 max-w-md leading-relaxed text-xs">
               A specialized AI receptionist system engineered for residential and commercial heating and air conditioning contractors. Answers inquiries, understands reported HVAC issues, collects relevant customer information, and routes or escalates requests appropriately.
             </p>
-            <div className="mt-4 flex items-center gap-2 text-[11px] text-amber-400 bg-slate-800/80 px-3 py-1.5 rounded border border-amber-500/20 max-w-fit">
+            <div className="mt-4 flex items-center gap-2 text-[11px] text-emerald-400 bg-slate-800/80 px-3 py-1.5 rounded border border-emerald-500/20 max-w-fit">
               <Shield className="h-3.5 w-3.5" />
-              <span>Stage 3 — Real Gemini AI Conversation</span>
+              <span>Powered by AERIS AI</span>
             </div>
           </div>
 
@@ -66,8 +66,8 @@ export const Footer: React.FC = () => {
         </div>
 
         <div className="pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
-          <p>© {new Date().getFullYear()} HVAC AI Receptionist Prototype. All rights reserved.</p>
-          <p>No paid services, phone lines, or live customer tracking connected in Phase 3.</p>
+          <p>© {new Date().getFullYear()} AERIS AI Receptionist. All rights reserved.</p>
+          <p>Autonomous AI intake &amp; dispatch routing for US HVAC contractors.</p>
         </div>
       </div>
     </footer>
