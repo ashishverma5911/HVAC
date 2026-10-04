@@ -1,0 +1,12 @@
+# nixpacks.toml - Railway Nixpacks Build Configuration
+# Explicitly installs pnpm 12.6.0 via npm to bypass Corepack bin/pnpm.cjs bug
+
+[phases.setup]
+nixPkgs = ["nodejs_22"]
+
+[phases.install]
+cmds = [
+  "corepack disable || true",
+  "npm install -g pnpm@12.6.0",
+  "pnpm install --frozen-lockfile"
+]
