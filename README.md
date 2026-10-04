@@ -389,10 +389,10 @@ Deploy the persistent WebSocket telephony bridge to [Railway](https://railway.ap
 
 1. **Deploy to Railway**:
    - In Railway Dashboard, create a **New Project** > **Deploy from GitHub repo** > select `HVAC-AI-Receptionist`.
-   - **Runtime Requirements**: The service requires **Node.js 22 LTS** (`engines.node: ">=22.0.0"`, configured in `.node-version` / `.nvmrc`) and uses **`pnpm@12.6.0`**.
-   - **Package Manager Bootstrap**: `nixpacks.toml` is configured in the repository to explicitly bootstrap `pnpm@12.6.0` via `npm install -g pnpm@12.6.0` and run `pnpm install --frozen-lockfile`, preventing Corepack cache lookup errors.
-   - Railway will automatically detect `railway.toml` and `nixpacks.toml`:
-     - **Build**: Nixpacks (`npm install -g pnpm@12.6.0 && pnpm install --frozen-lockfile`)
+   - **Runtime Requirements**: The service requires **Node.js 22 LTS** (`engines.node: ">=22.0.0"`, configured in `.node-version` / `.nvmrc`) and uses **`pnpm@12.6.0`** (declared in `packageManager` and `devEngines`).
+   - Railway will automatically detect `railway.toml`:
+     - **Builder**: Railpack (`builder = "RAILPACK"`) using Mise-managed Node 22 and native pnpm 12.6.0 (bypassing Corepack)
+     - **Install Command**: `pnpm install --frozen-lockfile`
      - **Start Command**: `pnpm telephony`
      - **Healthcheck Path**: `/health`
 2. **Railway Environment Variables**:
