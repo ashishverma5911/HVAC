@@ -383,11 +383,39 @@ pnpm dev
 pnpm telephony
 ```
 
-#### For Staging / Production:
-```bash
-# Start standalone telephony server
-pnpm telephony
-```
+#### For Staging / Production Deployment on Railway:
+
+Deploy the persistent WebSocket telephony bridge to [Railway](https://railway.app) while keeping the Next.js web application on Vercel:
+
+1. **Deploy to Railway**:
+   - In Railway Dashboard, create a **New Project** > **Deploy from GitHub repo** > select `HVAC-AI-Receptionist`.
+   - Railway will automatically detect `railway.toml`:
+     - **Build**: Nixpacks (`pnpm install`)
+     - **Start Command**: `pnpm telephony`
+     - **Healthcheck Path**: `/health`
+2. **Railway Environment Variables**:
+   In your Railway service's **Variables** tab, configure:
+   ```env
+   TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   TWILIO_AUTH_TOKEN="your_twilio_auth_token"
+   TWILIO_PHONE_NUMBER="+19725550144"
+   GEMINI_API_KEY="your_gemini_api_key"
+   GEMINI_LIVE_MODEL="gemini-3.8-live"
+   PUBLIC_HTTP_BASE_URL="https://your-app.vercel.app"
+   PUBLIC_WS_BASE_URL="wss://telephony-production.up.railway.app"
+   NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
+   SUPABASE_SERVICE_ROLE_KEY="your_supabase_service_role_key"
+   ```
+   *(Note: Railway automatically provides and injects `PORT`; the telephony server dynamically binds to `0.0.0.0:${PORT}`).*
+
+3. **Public Networking in Railway**:
+   - In the Railway service **Settings** > **Networking**, click **Generate Domain** (e.g., `telephony-production.up.railway.app`).
+   - This provides both:
+     - **HTTPS Healthcheck**: `https://telephony-production.up.railway.app/health`
+     - **WSS Media Stream**: `wss://telephony-production.up.railway.app/api/telephony/twilio-stream`
+4. **Vercel Webhook Environment**:
+   - In your Vercel project settings, set `PUBLIC_WS_BASE_URL` to match your Railway domain (`wss://telephony-production.up.railway.app`).
+   - Your Next.js webhook on Vercel will now automatically return TwiML routing incoming Twilio PSTN calls directly to your Railway WebSocket bridge!
 
 ### 6. Real PSTN Test Call Verification Protocol
 

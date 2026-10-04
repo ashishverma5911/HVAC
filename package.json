@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "telephony": "node node_modules/tsx/dist/cli.mjs src/server/telephonyServer.ts",
+    "telephony": "tsx src/server/telephonyServer.ts",
     "lint": "eslint"
   },
   "dependencies": {
@@ -17,6 +17,7 @@
     "next": "16.3.6",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "tsx": "^4.23.15",
     "ws": "^8.22.0"
   },
   "devDependencies": {
@@ -28,7 +29,6 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
-    "tsx": "^4.23.15",
     "typescript": "^5"
   },
   "packageManager": "pnpm@12.6.0"

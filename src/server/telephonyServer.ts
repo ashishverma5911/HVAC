@@ -19,7 +19,8 @@ try {
   // If .env.local doesn't exist, proceed with environment variables
 }
 
-const PORT = parseInt(process.env.TELEPHONY_PORT || '8080', 10);
+const PORT = parseInt(process.env.PORT || process.env.TELEPHONY_PORT || '8080', 10);
+const HOST = process.env.HOST || '0.0.0.0';
 const sessionManager = CallSessionManager.getInstance();
 const activeBridges = new Map<string, GeminiTelephonyBridge>();
 
@@ -54,7 +55,11 @@ function parseUrlEncodedBody(rawBody: string): Record<string, string> {
   return params;
 }
 
-export function createTelephonyServer(): { server: http.Server; wss: WebSocketServer } {
+export function createTelephonyServer(): {
+  server: http.Server;
+  wss: WebSocketServer;
+  shutdown: (signal: string, onComplete?: () => void) => void;
+} {
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
@@ -70,9 +75,17 @@ export function createTelephonyServer(): { server: http.Server; wss: WebSocketSe
     }
 
     // 1. Health check endpoint
-    if (url.pathname === '/health' || url.pathname === '/') {
+    if ((url.pathname === '/health' || url.pathname === '/') && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', service: 'hvac-telephony-bridge' }));
+      res.end(
+        JSON.stringify({
+          status: 'ok',
+          service: 'aeris-telephony-bridge',
+          uptimeSeconds: Math.floor(process.uptime()),
+          activeConnections: sessionManager.getAllActiveSessions().length,
+          timestamp: Date.now(),
+        })
+      );
       return;
     }
 
@@ -345,19 +358,89 @@ export function createTelephonyServer(): { server: http.Server; wss: WebSocketSe
     });
   });
 
-  return { server, wss };
+  let isShuttingDown = false;
+
+  const shutdown = (signal: string, onComplete?: () => void) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`[Telephony Server] Received ${signal}. Initiating graceful shutdown...`);
+
+    // 1. Close active Gemini telephony bridges
+    for (const [streamSid, bridge] of activeBridges.entries()) {
+      try {
+        console.log(`[Telephony Server] Closing Gemini bridge for stream ${streamSid}...`);
+        bridge.close();
+      } catch (err) {
+        console.error(`[Telephony Server] Error closing bridge for stream ${streamSid}:`, err);
+      }
+    }
+    activeBridges.clear();
+
+    // 2. Terminate active sessions in CallSessionManager
+    const activeSessions = sessionManager.getAllActiveSessions();
+    for (const session of activeSessions) {
+      try {
+        sessionManager.terminateSession(session.streamSid, `Server shutdown (${signal})`);
+      } catch (err) {
+        console.error(`[Telephony Server] Error terminating session ${session.sessionId}:`, err);
+      }
+    }
+
+    // 3. Close connected WebSocket clients
+    wss.clients.forEach((client) => {
+      try {
+        client.close(1001, 'Server shutting down');
+      } catch {}
+    });
+
+    // 4. Close WebSocket server
+    wss.close((wsErr) => {
+      if (wsErr) {
+        console.error('[Telephony Server] Error closing WebSocket server:', wsErr);
+      }
+
+      // 5. Close HTTP server
+      server.close((httpErr) => {
+        if (httpErr) {
+          console.error('[Telephony Server] Error closing HTTP server:', httpErr);
+        }
+        console.log('[Telephony Server] Graceful shutdown completed cleanly.');
+        if (onComplete) {
+          onComplete();
+        } else if (require.main === module) {
+          process.exit(0);
+        }
+      });
+    });
+
+    // Timeout fallback after 10s
+    setTimeout(() => {
+      console.warn('[Telephony Server] Forceful shutdown timeout (10s) reached.');
+      if (onComplete) {
+        onComplete();
+      } else if (require.main === module) {
+        process.exit(1);
+      }
+    }, 10000).unref();
+  };
+
+  return { server, wss, shutdown };
 }
 
 // Auto-start server when invoked as entrypoint script
 if (require.main === module) {
-  const { server } = createTelephonyServer();
-  server.listen(PORT, () => {
+  const { server, shutdown } = createTelephonyServer();
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+
+  server.listen(PORT, HOST, () => {
     console.log(`=======================================================`);
-    console.log(`🚀 HVAC AI Receptionist Telephony Server running on port ${PORT}`);
-    console.log(`   Health check: GET http://localhost:${PORT}/health`);
-    console.log(`   Diagnostics:  GET http://localhost:${PORT}/api/telephony/status`);
-    console.log(`   Twilio Voice: POST http://localhost:${PORT}/api/telephony/twilio/voice`);
-    console.log(`   Media Stream: ws://localhost:${PORT}/api/telephony/twilio-stream`);
+    console.log(`🚀 HVAC AI Receptionist Telephony Server running on http://${HOST}:${PORT}`);
+    console.log(`   Health check: GET http://${HOST}:${PORT}/health`);
+    console.log(`   Diagnostics:  GET http://${HOST}:${PORT}/api/telephony/status`);
+    console.log(`   Twilio Voice: POST http://${HOST}:${PORT}/api/telephony/twilio/voice`);
+    console.log(`   Media Stream: ws://${HOST}:${PORT}/api/telephony/twilio-stream`);
     console.log(`=======================================================`);
   });
 }
