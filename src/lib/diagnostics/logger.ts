@@ -10,7 +10,14 @@ export type DiagnosticEventType =
   | 'TOOL_EXECUTED'
   | 'LEAD_PERSISTED'
   | 'APPOINTMENT_PERSISTED'
-  | 'DEMO_RATE_LIMIT_TRIGGERED';
+  | 'DEMO_RATE_LIMIT_TRIGGERED'
+  | 'CALL_RECEIVED'
+  | 'CALL_ENDED'
+  | 'CALL_ERROR'
+  | 'STREAM_CONNECTED'
+  | 'GEMINI_CONNECTED'
+  | 'USER_TRANSCRIPT'
+  | 'TWILIO_SIGNATURE_VALIDATED';
 
 export interface DiagnosticEventParams {
   event: DiagnosticEventType;

@@ -1,5 +1,7 @@
 import { CustomerInfo, LeadStatus, AllowedIntent, AgentAction } from '@/types';
 import { extractStructuredCustomerData } from '../ai/extractConversationData';
+import { ContractorBusinessConfig } from '../ai/contractorConfig';
+import { resolveTelephonyTenant } from './tenantPhoneMapping';
 
 export interface TelephonyMetrics {
   twilioChunksReceived: number;
@@ -24,6 +26,8 @@ export interface TelephonyCallSession {
   sessionId: string;
   callerPhone: string | null;
   calledPhone: string | null;
+  businessId: string;
+  businessConfig: ContractorBusinessConfig;
   geminiSession: any | null;
   createdAt: number;
   lastActivityAt: number;
@@ -79,6 +83,8 @@ export class CallSessionManager {
     streamSid: string;
     callerPhone?: string | null;
     calledPhone?: string | null;
+    businessId?: string;
+    businessConfig?: ContractorBusinessConfig;
     onDurationLimitReached?: (session: TelephonyCallSession) => void;
   }): TelephonyCallSession {
     // If existing session with this streamSid exists, cleanly clean it up first
@@ -88,6 +94,10 @@ export class CallSessionManager {
 
     const sessionId = `LIVE-CALL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const now = Date.now();
+
+    const resolvedTenant = params.businessId && params.businessConfig
+      ? { businessId: params.businessId, businessConfig: params.businessConfig }
+      : resolveTelephonyTenant(params.calledPhone);
 
     const emptyCustomerInfo: CustomerInfo = {
       name: '',
@@ -108,6 +118,8 @@ export class CallSessionManager {
       sessionId,
       callerPhone: params.callerPhone || null,
       calledPhone: params.calledPhone || null,
+      businessId: resolvedTenant.businessId,
+      businessConfig: resolvedTenant.businessConfig,
       geminiSession: null,
       createdAt: now,
       lastActivityAt: now,

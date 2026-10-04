@@ -77,7 +77,14 @@ export function sanitizeLogPayload(obj: unknown, depth = 0): unknown {
   for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
     const lowerKey = key.toLowerCase();
 
-    if (SENSITIVE_KEYS.has(lowerKey)) {
+    if (
+      SENSITIVE_KEYS.has(lowerKey) ||
+      lowerKey.includes('token') ||
+      lowerKey.includes('secret') ||
+      lowerKey.includes('password') ||
+      lowerKey.includes('apikey') ||
+      lowerKey.includes('api_key')
+    ) {
       sanitized[key] = '[REDACTED_SECRET]';
       continue;
     }

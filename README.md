@@ -271,7 +271,152 @@ Ensure the following variables are configured in `.env.local` or your Vercel Pro
 
 ---
 
-## 8. What is Intentionally Deferred (Future Roadmap)
+## 8. Phase 8: Real Twilio PSTN Inbound Telephone Integration
+
+Phase 8 connects ONE real US phone number via Twilio Voice Media Streams to Google Gemini 3.8 Live, transforming AERIS into a fully functional inbound telephone receptionist for the pilot contractor (`ABC Cooling & Heating`).
+
+### 1. Inbound PSTN Architecture
+
+```
+[Caller Cell / Landline]
+       │
+       ▼ (US PSTN Call)
+[Twilio Voice Gateway]
+       │
+       ▼ (1. HTTPS POST /api/telephony/twilio/voice with X-Twilio-Signature)
+[Next.js Webhook Service] (Vercel / Node)
+       │
+       ▼ (2. Returns TwiML: <Connect><Stream url="wss://PUBLIC_WS_BASE_URL/api/telephony/twilio-stream"/>)
+[Twilio Media Stream]
+       │
+       ▼ (3. Bidirectional WSS Audio Stream: 8kHz μ-law)
+[Persistent Telephony Server] (Port 8080 on Railway / Render / Fly.io / VPS / ngrok)
+       │
+       ├── Transcode: 8kHz G.711 μ-law ──> 16kHz Linear PCM
+       │                                     │
+       │                                     ▼ (WebSocket)
+       │                              [Gemini 3.8 Live API]
+       │                                     │
+       │                                     ▼ (24kHz Linear PCM + FunctionCalls)
+       ├── Transcode: 24kHz Linear PCM ──> 8kHz G.711 μ-law
+       │
+       ├── Tool Execution Engine:
+       │     ├── check_service_area (Plano, Richardson)
+       │     ├── check_business_hours
+       │     ├── get_available_slots
+       │     ├── create_lead ──> Supabase leads table
+       │     ├── request_appointment ──> Supabase appointments table (status: requested)
+       │     └── transfer_to_human ──> Transfer to dispatcher
+       │
+       ├── Conversation Persistence:
+       │     └── Transcript text messages saved to Supabase (Zero Audio Storage)
+       │
+       ▼ (4. Stream μ-law audio frames)
+[Caller hears AERIS speak back with sub-second latency]
+```
+
+### 2. Deployment Architecture: Two Separate Concerns
+
+> [!IMPORTANT]
+> **Telephony Server Hosting Requirement**:
+> The Next.js web application and the Telephony WebSocket server have fundamentally different runtime models:
+> 1. **Next.js Webhook (`/api/telephony/twilio/voice`)**: Stateless HTTP request-response. Runs safely on Vercel or any serverless runtime.
+> 2. **Telephony Bridge Server (`src/server/telephonyServer.ts`)**: Long-lived, persistent bidirectional WebSocket server (port 8080). **Must NOT be deployed to Vercel Serverless Functions**. Deploy it as a continuous container/process on **Railway, Render, Fly.io, AWS ECS, a Linux VPS**, or expose locally via **ngrok**.
+
+### 3. Required Environment Variables
+
+Configure these in your `.env.local` (local) or production secrets manager:
+
+```env
+# Twilio PSTN Credentials
+TWILIO_PHONE_NUMBER="+19725550144"            # Your purchased Twilio US phone number
+TWILIO_AUTH_TOKEN="your_twilio_auth_token"     # From Twilio Console (for HMAC-SHA1 webhook verification)
+
+# Public URL Endpoints (Point to your publicly accessible domains)
+PUBLIC_HTTP_BASE_URL="https://your-app.vercel.app"      # Base URL where Next.js runs
+PUBLIC_WS_BASE_URL="wss://telephony.your-domain.com"    # Base URL where telephonyServer runs (Must be wss://)
+TELEPHONY_PORT=8080                                     # Local port for telephony server
+
+# AI & Database Configuration
+GEMINI_API_KEY="your_gemini_api_key"
+GEMINI_LIVE_MODEL="gemini-3.8-live"
+NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="your_supabase_service_role_key"
+```
+
+### 4. Twilio Console Setup Guide
+
+Follow these steps in the [Twilio Console](https://console.twilio.com):
+
+1. **Get a US Phone Number**:
+   - Go to **Phone Numbers** > **Manage** > **Active numbers** (or **Buy a number**).
+   - Ensure the number supports **Voice**.
+2. **Configure Voice Webhook**:
+   - Click on your phone number to edit its settings.
+   - Scroll down to the **Voice Configuration** section.
+   - Set **A CALL COMES IN** to: `Webhook`
+   - Set the URL to: `https://<PUBLIC_HTTP_BASE_URL>/api/telephony/twilio/voice`
+   - Set HTTP Method to: `HTTP POST`
+   - Leave fallback blank or set to your emergency forwarding number.
+   - Click **Save configuration**.
+
+### 5. Running the Telephony Server
+
+#### For Local Testing with ngrok:
+```bash
+# Terminal 1: Expose Next.js Webhook (port 3000)
+ngrok http 3000
+# Note the HTTPS URL: e.g. https://abc-123.ngrok-free.app
+
+# Terminal 2: Expose Telephony Server (port 8080)
+ngrok http 8080
+# Note the host: e.g. wss://def-456.ngrok-free.app
+
+# Update .env.local:
+# PUBLIC_HTTP_BASE_URL="https://abc-123.ngrok-free.app"
+# PUBLIC_WS_BASE_URL="def-456.ngrok-free.app"
+
+# Terminal 3: Start Next.js
+pnpm dev
+
+# Terminal 4: Start Telephony Bridge Server
+pnpm telephony
+```
+
+#### For Staging / Production:
+```bash
+# Start standalone telephony server
+pnpm telephony
+```
+
+### 6. Real PSTN Test Call Verification Protocol
+
+To verify end-to-end operation, dial your Twilio phone number and execute this standard pilot script:
+
+| Turn | Caller Says | AERIS Response & Verification Action |
+|---|---|---|
+| **1. Greeting** | *"Hello?"* | AERIS greets caller: *"Thanks for calling ABC Cooling & Heating! My name is AERIS. How can I help you today?"* |
+| **2. Issue & Location** | *"Hi, my AC stopped blowing cold air. I'm in Plano."* | AERIS calls `check_service_area("Plano")` (returns supported: true) and asks for customer name, street address, and phone number. |
+| **3. Contact Details** | *"My name is Alex Mercer, address is 742 Evergreen Terrace, Plano, phone is 972-555-0144."* | AERIS calls `create_lead(...)`. Real lead is persisted to Supabase `leads` table with status `qualified`. AERIS acknowledges and offers inspection slots. |
+| **4. Scheduling** | *"What times do you have open tomorrow?"* | AERIS calls `get_available_slots(...)` and presents tomorrow morning/afternoon windows. |
+| **5. Appointment Request** | *"Tomorrow at 10 AM works great."* | AERIS calls `request_appointment(...)`. Appointment is persisted to Supabase with status strictly **`requested`** (never confirmed). AERIS clarifies that dispatch will confirm. |
+| **6. Barge-In Test** | Speak over AERIS while she is explaining details. | AERIS immediately silences outbound audio on the caller's phone and listens to the interruption. |
+| **7. Emergency Protocol Test** | *"Wait, I also smell a strong gas leak near the furnace!"* | AERIS immediately triggers the emergency protocol: advises caller to evacuate immediately, refrain from using light switches or phones indoors, and call 911 or the gas utility. No DIY repair advice is given. |
+
+### 7. Post-Call Verification in Contractor Dashboard
+
+After hanging up:
+1. Log in to the contractor dashboard at `/dashboard` (or inspect `/leads`).
+2. Verify the newly created lead for **Alex Mercer** appears at the top of the list.
+3. Click the lead to open `/leads/[id]`:
+   - Verify customer details: Alex Mercer, (972) 555-0144, 742 Evergreen Terrace, Plano.
+   - Verify appointment section shows **Tomorrow 10:00 AM** with status **`requested`**.
+   - Verify **Conversation History** shows the complete text transcript between Alex and AERIS.
+   - Verify zero audio files were saved.
+
+---
+
+## 9. What is Intentionally Deferred (Future Roadmap)
 
 To maintain focus and pilot safety, the following remain deferred:
 - ❌ Stripe or Dodo billing / paid subscription tiers
@@ -280,4 +425,5 @@ To maintain focus and pilot safety, the following remain deferred:
 - ❌ External third-party CRM sync (ServiceTitan, Salesforce)
 - ❌ Third-party calendar integrations (Google Calendar, Outlook)
 - ❌ Raw audio recording retention or voice analytics
+
 

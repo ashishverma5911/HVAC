@@ -5,6 +5,10 @@ import { GeminiTelephonyBridge } from '../lib/telephony/geminiTelephonyBridge';
 import { decodeTwilioMediaPayload } from '../lib/telephony/audioCodec';
 import { validateTwilioWebhookSignature } from '../lib/telephony/twilioSecurity';
 import { getTelephonyEndpoints } from '../lib/telephony/telephonyConfig';
+import { ContractorPersistenceService, normalizeToUuid } from '../lib/services/contractorPersistence';
+import { createAdminClient } from '../lib/supabase/admin';
+import { logDiagnosticEvent } from '../lib/diagnostics/logger';
+import { maskPhone } from '../lib/diagnostics/piiMask';
 
 // Load local environment files in development if present
 try {
@@ -78,9 +82,7 @@ export function createTelephonyServer(): { server: http.Server; wss: WebSocketSe
       const recentSessions = sessionManager.getRecentSessionsSummary();
 
       const twilioNumber = process.env.TWILIO_PHONE_NUMBER || '';
-      const maskedTwilioNumber = twilioNumber.length > 5
-        ? `${twilioNumber.substring(0, 5)}***${twilioNumber.substring(twilioNumber.length - 2)}`
-        : (twilioNumber ? 'Configured' : 'Not Configured');
+      const maskedTwilioNumber = twilioNumber.length > 5 ? maskPhone(twilioNumber) : (twilioNumber ? 'Configured' : 'Not Configured');
 
       const hostHeader = req.headers.host || 'localhost:8080';
       const proto = (req.headers['x-forwarded-proto'] as string) || 'http';
@@ -124,6 +126,11 @@ export function createTelephonyServer(): { server: http.Server; wss: WebSocketSe
 
         if (authToken && !validateTwilioWebhookSignature(authToken, twilioSignature, endpoints.webhookUrl, params)) {
           console.warn(`[Telephony Server] Rejected request with invalid Twilio signature for URL: ${endpoints.webhookUrl}`);
+          logDiagnosticEvent({
+            event: 'CALL_ERROR',
+            error: 'Rejected request with invalid Twilio signature',
+            details: { webhookUrl: endpoints.webhookUrl },
+          });
           res.writeHead(403, { 'Content-Type': 'text/plain' });
           res.end('Forbidden: Invalid Twilio Webhook Signature');
           return;
@@ -133,7 +140,21 @@ export function createTelephonyServer(): { server: http.Server; wss: WebSocketSe
         const calledPhone = params.To || '';
         const callSid = params.CallSid || `CALL-${Date.now()}`;
 
-        console.log(`[Telephony Server] Inbound phone call received: CallSid=${callSid}, From=${callerPhone ? callerPhone.substring(0, 4) + '***' : 'Unknown'}`);
+        logDiagnosticEvent({
+          event: 'CALL_RECEIVED',
+          conversationId: callSid,
+          details: {
+            callerPhone: maskPhone(callerPhone),
+            calledPhone: maskPhone(calledPhone),
+          },
+        });
+
+        logDiagnosticEvent({
+          event: 'TWILIO_SIGNATURE_VALIDATED',
+          conversationId: callSid,
+        });
+
+        console.log(`[Telephony Server] Inbound phone call received: CallSid=${callSid}, From=${maskPhone(callerPhone)}`);
 
         const twiml = buildTwimlResponse(endpoints.streamUrl, callerPhone, calledPhone);
 
@@ -203,6 +224,24 @@ export function createTelephonyServer(): { server: http.Server; wss: WebSocketSe
               },
             });
 
+            logDiagnosticEvent({
+              event: 'STREAM_CONNECTED',
+              businessId: session.businessId,
+              conversationId: callSid,
+              correlationId: session.sessionId,
+              details: { streamSid },
+            });
+
+            // Ensure conversation record in database
+            ContractorPersistenceService.ensureConversation(
+              session.businessId,
+              callSid,
+              'telephony',
+              callerPhone || undefined
+            ).catch((err) => {
+              console.warn('[Telephony Server] Non-fatal: Conversation row ensure failed:', err?.message || err);
+            });
+
             // Initialize Gemini Live bridge for this call
             try {
               bridge = new GeminiTelephonyBridge(session, ws);
@@ -240,7 +279,38 @@ export function createTelephonyServer(): { server: http.Server; wss: WebSocketSe
             const streamSid = msg.streamSid || currentStreamSid;
             console.log(`[Telephony Server] Twilio stream 'stop' event received for streamSid=${streamSid}`);
             if (streamSid) {
+              const session = sessionManager.getSessionByStream(streamSid);
               sessionManager.terminateSession(streamSid, 'Twilio stream stop event');
+
+              if (session) {
+                logDiagnosticEvent({
+                  event: 'CALL_ENDED',
+                  businessId: session.businessId,
+                  conversationId: session.callSid,
+                  correlationId: session.sessionId,
+                  durationMs: (session.metrics.durationSeconds || 0) * 1000,
+                });
+
+                // Update database conversation row to ended
+                if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+                  try {
+                    const admin = createAdminClient();
+                    const convUuid = normalizeToUuid(session.callSid);
+                    admin
+                      .from('conversations')
+                      .update({
+                        status: 'ended',
+                        ended_at: new Date().toISOString(),
+                      })
+                      .eq('id', convUuid)
+                      .then(
+                        () => {},
+                        () => {}
+                      );
+                  } catch {}
+                }
+              }
+
               if (bridge) {
                 bridge.close();
                 bridge = null;
@@ -251,18 +321,17 @@ export function createTelephonyServer(): { server: http.Server; wss: WebSocketSe
           }
 
           default:
-            // Non-media events (e.g. mark, dtmf)
             break;
         }
       } catch (err) {
-        console.error('[Telephony Server] Error processing WebSocket message:', err);
+        console.error('[Telephony Server] Error processing WS message:', err);
       }
     });
 
     ws.on('close', (code, reason) => {
-      console.log(`[Telephony Server] Twilio WebSocket closed (code: ${code}, reason: "${reason.toString()}")`);
+      console.log(`[Telephony Server] WebSocket closed for stream ${currentStreamSid || 'unknown'} (code: ${code}, reason: "${reason}")`);
       if (currentStreamSid) {
-        sessionManager.terminateSession(currentStreamSid, `WebSocket client closed: ${code}`);
+        sessionManager.terminateSession(currentStreamSid, `WebSocket closed (${code})`);
         if (bridge) {
           bridge.close();
           bridge = null;
@@ -273,30 +342,22 @@ export function createTelephonyServer(): { server: http.Server; wss: WebSocketSe
 
     ws.on('error', (err) => {
       console.error(`[Telephony Server] WebSocket error on stream ${currentStreamSid}:`, err);
-      if (currentStreamSid) {
-        sessionManager.terminateSession(currentStreamSid, `WebSocket error: ${err.message}`);
-        if (bridge) {
-          bridge.close();
-          bridge = null;
-        }
-        activeBridges.delete(currentStreamSid);
-      }
     });
   });
 
   return { server, wss };
 }
 
-// Start standalone server when executed directly
-if (require.main === module || process.argv[1]?.includes('telephonyServer')) {
+// Auto-start server when invoked as entrypoint script
+if (require.main === module) {
   const { server } = createTelephonyServer();
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n=========================================================`);
-    console.log(` [Summit HVAC] Telephony Bridge Server Active`);
-    console.log(` HTTP & WebSocket Port: ${PORT}`);
-    console.log(` Twilio Voice Webhook: http://0.0.0.0:${PORT}/api/telephony/twilio/voice`);
-    console.log(` Twilio Media Stream:  ws://0.0.0.0:${PORT}/api/telephony/twilio-stream`);
-    console.log(` Diagnostics Status:   http://0.0.0.0:${PORT}/api/telephony/status`);
-    console.log(`=========================================================\n`);
+  server.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(`🚀 HVAC AI Receptionist Telephony Server running on port ${PORT}`);
+    console.log(`   Health check: GET http://localhost:${PORT}/health`);
+    console.log(`   Diagnostics:  GET http://localhost:${PORT}/api/telephony/status`);
+    console.log(`   Twilio Voice: POST http://localhost:${PORT}/api/telephony/twilio/voice`);
+    console.log(`   Media Stream: ws://localhost:${PORT}/api/telephony/twilio-stream`);
+    console.log(`=======================================================`);
   });
 }
