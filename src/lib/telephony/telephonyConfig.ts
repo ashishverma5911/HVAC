@@ -67,7 +67,10 @@ export function getTelephonyEndpoints(reqHost?: string | null, isSecureProto: bo
   let webhookUrl: string;
   if (resolvedHttp) {
     const proto = resolvedHttp.startsWith('http://') ? 'http://' : 'https://';
-    const cleanHost = resolvedHttp.replace(/^https?:\/\//, '');
+    const cleanHost = resolvedHttp
+      .replace(/^https?:\/\//, '')
+      .replace(/\/api\/telephony\/twilio\/voice\/?$/, '')
+      .replace(/\/+$/, '');
     webhookUrl = `${proto}${cleanHost}/api/telephony/twilio/voice`;
   } else {
     const host = reqHost || 'localhost:3000';
@@ -78,7 +81,10 @@ export function getTelephonyEndpoints(reqHost?: string | null, isSecureProto: bo
   // Build Stream URL (WS / WSS) - Points to standalone WebSocket server
   let streamUrl: string;
   if (resolvedWs) {
-    const cleanHost = resolvedWs.replace(/^(wss?|https?):\/\//, '');
+    const cleanHost = resolvedWs
+      .replace(/^(wss?|https?):\/\//, '')
+      .replace(/\/api\/telephony\/twilio-stream\/?$/, '')
+      .replace(/\/+$/, '');
     streamUrl = `wss://${cleanHost}/api/telephony/twilio-stream`;
   } else {
     // Local dev fallback: point to telephony server port (8080)
