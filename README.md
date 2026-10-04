@@ -389,6 +389,7 @@ Deploy the persistent WebSocket telephony bridge to [Railway](https://railway.ap
 
 1. **Deploy to Railway**:
    - In Railway Dashboard, create a **New Project** > **Deploy from GitHub repo** > select `HVAC-AI-Receptionist`.
+   - **Runtime Requirements**: The service requires **Node.js 22 LTS** (`engines.node: ">=22.0.0"`, configured in `.node-version` / `.nvmrc`) and uses **`pnpm@12.6.0`**. (Railway Nixpacks automatically detects this and uses Node 22).
    - Railway will automatically detect `railway.toml`:
      - **Build**: Nixpacks (`pnpm install`)
      - **Start Command**: `pnpm telephony`
