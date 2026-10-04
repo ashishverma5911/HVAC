@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/landing/Navbar';
@@ -9,7 +9,7 @@ import { MetricCards } from '@/components/dashboard/MetricCards';
 import { RecentLeadsTable } from '@/components/dashboard/RecentLeadsTable';
 import { mockDashboardMetrics, mockRecentLeads } from '@/mock/dashboardData';
 import { DashboardLead, DashboardMetrics } from '@/types';
-import { ArrowLeft, Building2, LogOut, Sparkles, CheckCircle2, Loader2, PhoneCall } from 'lucide-react';
+import { ArrowLeft, LogOut, CheckCircle2, Loader2, PhoneCall, AlertCircle, RefreshCw } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function DashboardPage() {
@@ -22,57 +22,75 @@ export default function DashboardPage() {
   } | null>(null);
 
   const [loadingData, setLoadingData] = useState<boolean>(true);
-  const [metrics, setMetrics] = useState<DashboardMetrics>(mockDashboardMetrics);
-  const [leads, setLeads] = useState<DashboardLead[]>(mockRecentLeads);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<DashboardMetrics>({
+    callsToday: 0,
+    leads: 0,
+    appointments: 0,
+    urgentRequests: 0,
+  });
+  const [leads, setLeads] = useState<DashboardLead[]>([]);
+
+  const loadDashboard = useCallback(async () => {
+    setLoadingData(true);
+    setLoadError(null);
+    try {
+      const res = await fetch('/api/auth/status');
+      const authData = await res.json();
+      setAuthStatus(authData);
+
+      if (authData.authenticated && authData.hasBusiness) {
+        // Fetch real database metrics and recent leads
+        const dashRes = await fetch('/api/contractor/dashboard');
+        if (!dashRes.ok) {
+          throw new Error(`Failed to load contractor data (status ${dashRes.status})`);
+        }
+        const dashData = await dashRes.json();
+        if (dashData.success) {
+          setMetrics({
+            callsToday: dashData.metrics.totalCalls,
+            leads: dashData.metrics.totalLeads,
+            appointments: dashData.metrics.appointmentsRequested,
+            urgentRequests: dashData.metrics.urgentRequests,
+          });
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mappedLeads: DashboardLead[] = (dashData.recentLeads || []).map((l: any) => ({
+            id: l.id,
+            customerName: l.customer_name,
+            service: l.service_type,
+            city: l.city_area || l.service_address || 'Service Area',
+            urgency: l.urgency,
+            status: l.status,
+            timeReceived: new Date(l.created_at).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            phone: l.phone,
+            notes: l.reported_issue,
+          }));
+          setLeads(mappedLeads);
+        } else {
+          throw new Error(dashData.error || 'Failed to parse dashboard data');
+        }
+      } else {
+        // Unauthenticated demo preview mode
+        setMetrics(mockDashboardMetrics);
+        setLeads(mockRecentLeads);
+      }
+    } catch (err: unknown) {
+      console.error('Failed to load dashboard data:', err);
+      setLoadError(
+        err instanceof Error ? err.message : 'Unable to load contractor dashboard data. Please try again.'
+      );
+    } finally {
+      setLoadingData(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function loadDashboard() {
-      try {
-        const res = await fetch('/api/auth/status');
-        const authData = await res.json();
-        setAuthStatus(authData);
-
-        if (authData.authenticated && authData.hasBusiness) {
-          // Fetch live database metrics and recent leads
-          const dashRes = await fetch('/api/contractor/dashboard');
-          if (dashRes.ok) {
-            const dashData = await dashRes.json();
-            if (dashData.success) {
-              setMetrics({
-                callsToday: dashData.metrics.totalCalls,
-                leads: dashData.metrics.totalLeads,
-                appointments: dashData.metrics.appointmentsRequested,
-                urgentRequests: dashData.metrics.urgentRequests,
-              });
-
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const mappedLeads: DashboardLead[] = (dashData.recentLeads || []).map((l: any) => ({
-                id: l.id,
-                customerName: l.customer_name,
-                service: l.service_type,
-                city: l.city_area || l.service_address || 'Service Area',
-                urgency: l.urgency,
-                status: l.status,
-                timeReceived: new Date(l.created_at).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }),
-                phone: l.phone,
-                notes: l.reported_issue,
-              }));
-              setLeads(mappedLeads);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load dashboard data:', err);
-      } finally {
-        setLoadingData(false);
-      }
-    }
-
     loadDashboard();
-  }, []);
+  }, [loadDashboard]);
 
   const handleSignOut = async () => {
     try {
@@ -86,7 +104,7 @@ export default function DashboardPage() {
     }
   };
 
-  const businessTitle = authStatus?.businessName || 'Summit HVAC Contractor Dashboard';
+  const businessTitle = authStatus?.businessName || (authStatus?.authenticated ? 'Contractor Dashboard' : 'Summit HVAC Preview Dashboard');
   const isRealContractor = authStatus?.authenticated && authStatus?.hasBusiness;
 
   return (
@@ -108,7 +126,7 @@ export default function DashboardPage() {
                 </Link>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                   {businessTitle}
                 </h1>
@@ -129,7 +147,7 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {isRealContractor ? (
                 <>
                   <Link
@@ -168,10 +186,28 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Error Banner with Retry */}
+          {loadError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
+                <p className="text-xs text-red-700 font-medium">{loadError}</p>
+              </div>
+              <button
+                onClick={loadDashboard}
+                className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-800 bg-white border border-red-200 px-3 py-1.5 rounded-lg shadow-2xs transition shrink-0"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Retry</span>
+              </button>
+            </div>
+          )}
+
           {/* Metric KPIs */}
           {loadingData ? (
-            <div className="py-12 flex justify-center items-center">
+            <div className="py-16 flex flex-col justify-center items-center gap-3">
               <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+              <p className="text-xs text-slate-500">Loading contractor metrics...</p>
             </div>
           ) : (
             <>

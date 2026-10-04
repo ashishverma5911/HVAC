@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ConversationChannel, LeadUrgency, LeadStatus } from '@/lib/supabase/types';
+import { logDiagnosticEvent } from '@/lib/diagnostics/logger';
 import * as crypto from 'crypto';
 
 /**
@@ -225,6 +226,18 @@ export class ContractorPersistenceService {
       await admin.from('conversations').update({ lead_id: newLead.id }).eq('id', convUuid);
     }
 
+    logDiagnosticEvent({
+      event: 'LEAD_PERSISTED',
+      businessId,
+      conversationId: convUuid || undefined,
+      details: {
+        leadId: newLead.id,
+        serviceType: params.serviceType,
+        urgency,
+        status,
+      },
+    });
+
     return {
       leadId: newLead.id,
       isDuplicate: false,
@@ -315,6 +328,16 @@ export class ContractorPersistenceService {
       .update({ status: 'appointment_requested' })
       .eq('id', params.leadId)
       .eq('business_id', businessId);
+
+    logDiagnosticEvent({
+      event: 'APPOINTMENT_PERSISTED',
+      businessId,
+      details: {
+        appointmentId: newAppt.id,
+        leadId: params.leadId,
+        status: 'requested',
+      },
+    });
 
     return {
       appointmentId: newAppt.id,

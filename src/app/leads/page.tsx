@@ -309,7 +309,18 @@ export default function LeadsManagementPage() {
                 <p className="text-xs text-slate-500">Loading contractor leads...</p>
               </div>
             ) : error ? (
-              <div className="py-16 text-center text-red-600 text-xs">{error}</div>
+              <div className="py-16 text-center space-y-3">
+                <div className="h-10 w-10 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <p className="text-xs text-red-700 font-medium max-w-sm mx-auto">{error}</p>
+                <button
+                  onClick={fetchLeads}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-xs font-semibold text-slate-700 rounded-lg hover:bg-slate-50 transition shadow-2xs"
+                >
+                  <span>Retry</span>
+                </button>
+              </div>
             ) : leads.length === 0 ? (
               <div className="py-20 text-center space-y-3">
                 <div className="h-12 w-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400">

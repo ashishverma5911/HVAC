@@ -143,6 +143,13 @@ export async function executeAgentToolAsync(
 
           const isSupported = matchedCity || matchedZip;
 
+          if (isDemoMode) {
+            const session = mockStore.getSession(context.conversationId);
+            session.serviceAreaChecked = true;
+            session.serviceAreaSupported = isSupported;
+            session.matchedArea = matchedCity ? (city || null) : matchedZip ? (zip || null) : null;
+          }
+
           output = {
             query: { city, zip },
             supported: isSupported,
@@ -507,6 +514,13 @@ export function executeAgentTool(
           }
 
           const isSupported = matchedCity || matchedZip;
+
+          if (isDemoMode) {
+            const session = mockStore.getSession(context.conversationId);
+            session.serviceAreaChecked = true;
+            session.serviceAreaSupported = isSupported;
+            session.matchedArea = matchedCity ? (city || null) : matchedZip ? (zip || null) : null;
+          }
 
           output = {
             query: { city, zip },

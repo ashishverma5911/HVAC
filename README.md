@@ -206,11 +206,78 @@ To expose both services locally to Twilio without requiring a reverse proxy:
 
 ---
 
-## 7. What is Intentionally Deferred (Future Phases)
+---
 
-To maintain focus and avoid scope creep, the following remain deferred:
-- ❌ Production billing or Stripe subscriptions
-- ❌ Supabase or production PostgreSQL multi-tenant architecture
-- ❌ Automatic outbound marketing or cold call campaigns
-- ❌ Automated bulk SMS marketing
-- ❌ Carrier number porting
+## 7. Phase 7 Pilot Readiness & Production Hardening
+
+### Pilot Test Configuration ("ABC Cooling & Heating")
+A documented pilot configuration is provided for local and staging verification:
+- **Contractor Name**: `ABC Cooling & Heating`
+- **Territory**: `Plano`, `Richardson`, Texas
+- **Services Offered**: `AC Repair & Diagnostic`, `HVAC Maintenance`, `Heating & Furnace Repair`, `Emergency Service`
+- **Operating Hours**: Monday–Friday 8:00 AM – 6:00 PM; Saturday–Sunday Closed
+- **Emergency Service**: Enabled (24/7 on-call dispatch for severe heating/cooling failures during freezing/extreme heat)
+- **Transfer Line**: `(972) 555-0199`
+- **Seed Script**: Run `pnpm tsx scripts/seed_pilot_account.ts` to provision or synchronize the pilot account in Supabase.
+
+### Required Environment Variables & Vercel Deployment Checklist
+Ensure the following variables are configured in `.env.local` or your Vercel Project Settings:
+
+| Variable | Environment | Required | Description |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Server Only | Yes | Google AI Studio key for Gemini 3.8 Live & Flash |
+| `GEMINI_LIVE_MODEL` | Server Only | Optional | Live audio model identifier (defaults to `gemini-3.8-live`) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Public (Client & Server) | Yes | HTTPS project URL for Supabase instance |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public (Client & Server) | Yes | Supabase client anon public key for auth sessions |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server Only | Yes | Supabase admin secret for tenant-scoped database queries |
+| `NODE_ENV` | System | Auto | Set to `production` in Vercel |
+
+> [!CAUTION]
+> **Zero Client Secret Exposure**:
+> `GEMINI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` must **never** be prefixed with `NEXT_PUBLIC_` or imported into client components. The build will fail or trigger security alerts if leaked.
+
+### Health Check & System Probe
+- **Endpoint**: `GET /api/health`
+- **Purpose**: Low-overhead liveness and readiness probe for uptime monitors (Vercel, BetterStack, Pingdom).
+- **Security**: Reports subsystem status (`healthy` / `degraded`, `configured` / `missing`) **without ever exposing secret keys or credential hashes**.
+
+### Customer Data Privacy & PII Scrubbing
+- **Zero Audio Storage**: Audio streams are processed exclusively in-memory and streamed via WebSockets. No raw audio recordings or audio files are ever written to disk or the database.
+- **Operational Log Scrubbing**: Server diagnostics and tool logs automatically mask customer phone numbers (e.g. `(972) ***-**99`), street addresses (e.g. `*** Legacy Dr, Plano`), and customer names (e.g. `J*** D***`).
+- **Data Stored**:
+  - `leads`: Customer name, contact phone, service street/city, service type, reported issue summary, urgency, status.
+  - `appointments`: Requested date/slot window, status (`requested`), dispatcher notes.
+  - `conversations`: Transcript messages (text only), channel (`web_voice` / `web_chat`), duration.
+  - `call_events`: Audit timeline events of tool executions (`check_service_area`, `create_lead`, etc.).
+
+### Public Demo Abuse Protection
+- The public landing page demo (`Summit HVAC`) operates 100% in-memory with **zero database writes**.
+- An in-memory session limiter enforces:
+  - Max 30 conversation turns / tool actions per demo session.
+  - Max 6 live audio token requests per session.
+  - Automatic memory cleanup every 15 minutes.
+- Authenticated contractors are completely exempt from demo rate limits.
+
+### Troubleshooting & Diagnostics
+1. **"AI voice service is temporarily unavailable"**:
+   - Verify `GEMINI_API_KEY` is configured and valid in your server environment.
+   - Run `curl http://localhost:3000/api/health` to inspect Gemini service status.
+2. **Microphone Access Denied**:
+   - Ensure your browser has granted microphone permissions. Click the lock/settings icon in the browser address bar to allow audio input.
+3. **Missing Business Profile (HTTP 403)**:
+   - Authenticated users without a completed contractor profile are prevented from accessing `/dashboard`, `/leads`, or `/settings` and redirected to `/onboarding`.
+4. **Appointment Status Invariant**:
+   - By architectural design, all AI-scheduled appointments remain strictly in `requested` status until human dispatcher confirmation.
+
+---
+
+## 8. What is Intentionally Deferred (Future Roadmap)
+
+To maintain focus and pilot safety, the following remain deferred:
+- ❌ Stripe or Dodo billing / paid subscription tiers
+- ❌ Automatic outbound telemarketing or cold calling
+- ❌ Automated bulk SMS promotional campaigns
+- ❌ External third-party CRM sync (ServiceTitan, Salesforce)
+- ❌ Third-party calendar integrations (Google Calendar, Outlook)
+- ❌ Raw audio recording retention or voice analytics
+

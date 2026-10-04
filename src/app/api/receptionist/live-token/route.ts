@@ -3,6 +3,9 @@ import { GoogleGenAI, Modality } from '@google/genai';
 import { buildReceptionistTools } from '@/lib/ai/tools';
 import { buildReceptionistSystemInstruction } from '@/lib/ai/receptionistPrompt';
 import { resolveTenantContext } from '@/lib/auth/tenant';
+import { demoLimiter } from '@/lib/security/demoLimiter';
+import { logDiagnosticEvent } from '@/lib/diagnostics/logger';
+import { createSafeErrorResponse } from '@/lib/errors/safeResponse';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,16 +30,16 @@ export async function GET() {
  */
 export async function POST(req: Request) {
   const startTime = Date.now();
+  let conversationId = `conv-${Date.now()}`;
+
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey.trim().length === 0) {
-      return NextResponse.json(
-        {
-          error: 'Server configuration error: GEMINI_API_KEY is not configured in .env.local.',
-          category: 'MISSING_API_KEY',
-        },
-        { status: 500 }
-      );
+      return createSafeErrorResponse({
+        code: 'AI_SERVICE_UNAVAILABLE',
+        userMessage: 'Server configuration error: AI voice service is not configured.',
+        status: 503,
+      });
     }
 
     const liveModel = process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live';
@@ -45,14 +48,14 @@ export async function POST(req: Request) {
     // SAFEGUARD 1: If authenticated user has missing business profile, return 403 (do NOT fall back to demo)
     const tenant = await resolveTenantContext();
     if (!tenant.success) {
-      return NextResponse.json(
-        { error: tenant.error, category: tenant.category },
-        { status: tenant.status }
-      );
+      return createSafeErrorResponse({
+        code: tenant.category === 'MISSING_BUSINESS_PROFILE' ? 'MISSING_BUSINESS_PROFILE' : 'FORBIDDEN',
+        userMessage: tenant.error,
+        status: tenant.status,
+      });
     }
 
     // Parse optional body for session metadata
-    let conversationId = `conv-${Date.now()}`;
     try {
       const body = await req.json();
       if (body?.conversationId && typeof body.conversationId === 'string') {
@@ -60,6 +63,24 @@ export async function POST(req: Request) {
       }
     } catch {
       // Body is optional
+    }
+
+    // 2. Public demo abuse limiter: rate-limit ephemeral token generation for unauthenticated demo sessions
+    if (tenant.isDemo) {
+      const limitCheck = demoLimiter.recordTokenRequest(conversationId);
+      if (!limitCheck.allowed) {
+        logDiagnosticEvent({
+          event: 'DEMO_RATE_LIMIT_TRIGGERED',
+          conversationId,
+          isDemo: true,
+          error: limitCheck.reason,
+        });
+        return createSafeErrorResponse({
+          code: 'DEMO_LIMIT_EXCEEDED',
+          userMessage: limitCheck.reason,
+          status: 429,
+        });
+      }
     }
 
     // Build dynamic system instruction & tool definitions reflecting contractor configuration
@@ -86,7 +107,6 @@ export async function POST(req: Request) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         if (attempt > 1) {
-          console.log(`[Live Token API] Retry attempt ${attempt}/3 after transient error...`);
           await new Promise((r) => setTimeout(r, 1000 * attempt));
         }
 
@@ -123,7 +143,6 @@ export async function POST(req: Request) {
       } catch (err: unknown) {
         lastError = err;
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.warn(`[Live Token API] Attempt ${attempt} failed:`, errMsg);
         const isTransient =
           errMsg.includes('fetch failed') ||
           errMsg.includes('503') ||
@@ -139,35 +158,34 @@ export async function POST(req: Request) {
 
     if (!token?.name) {
       const errMsg = lastError instanceof Error ? lastError.message : 'Failed to generate token';
-      let category = 'UPSTREAM_GEMINI_ERROR';
-      if (errMsg.includes('fetch failed') || errMsg.includes('ETIMEDOUT') || errMsg.includes('network')) {
-        category = 'FETCH_TIMEOUT_OR_NETWORK';
-      } else if (errMsg.includes('API key') || errMsg.includes('401') || errMsg.includes('403')) {
-        category = 'INVALID_API_KEY';
-      } else if (errMsg.includes('model') || errMsg.includes('404')) {
-        category = 'UNSUPPORTED_LIVE_MODEL';
-      }
+      logDiagnosticEvent({
+        event: 'REQUEST_FAILED',
+        businessId: tenant.businessId,
+        conversationId,
+        isDemo: tenant.isDemo,
+        durationMs,
+        error: errMsg,
+      });
 
-      console.error(`[Live Token API] Token generation failed (${category}) in ${durationMs}ms:`, errMsg);
-      return NextResponse.json(
-        {
-          error: `Failed to initialize voice session token (${category}): ${errMsg}`,
-          category,
-          model: liveModel,
-          durationMs,
-        },
-        { status: 500 }
-      );
+      return createSafeErrorResponse({
+        code: 'TOKEN_GENERATION_FAILED',
+        userMessage: 'Unable to establish live audio session. Please check your connection and retry.',
+        status: 502,
+        internalError: lastError,
+      });
     }
 
-    // Development-only diagnostic logging (Zero secrets or PII logged)
-    console.log(`[Live Token API] Ephemeral token created successfully in ${durationMs}ms:`, {
-      status: 200,
-      tokenCreated: true,
-      model: liveModel,
-      newSessionExpireTime,
-      expireTime,
-      hasTokenName: !!token.name,
+    // Log diagnostic event with zero secrets or unmasked PII
+    logDiagnosticEvent({
+      event: 'VOICE_TOKEN_ISSUED',
+      businessId: tenant.businessId,
+      conversationId,
+      isDemo: tenant.isDemo,
+      durationMs,
+      details: {
+        model: liveModel,
+        hasTokenName: !!token.name,
+      },
     });
 
     // Return ONLY the token name and model metadata. NEVER return or expose GEMINI_API_KEY.
@@ -183,15 +201,18 @@ export async function POST(req: Request) {
     });
   } catch (error: unknown) {
     const durationMs = Date.now() - startTime;
-    const message = error instanceof Error ? error.message : 'Failed to generate live token';
-    console.error('[Live Token API] Unexpected error generating ephemeral token:', message);
-    return NextResponse.json(
-      {
-        error: `Failed to initialize voice session token (UNEXPECTED_ERROR): ${message}`,
-        category: 'UNEXPECTED_ERROR',
-        durationMs,
-      },
-      { status: 500 }
-    );
+    logDiagnosticEvent({
+      event: 'REQUEST_FAILED',
+      conversationId,
+      durationMs,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+
+    return createSafeErrorResponse({
+      code: 'INTERNAL_SERVER_ERROR',
+      userMessage: 'An unexpected error occurred while initializing voice session.',
+      status: 500,
+      internalError: error,
+    });
   }
 }
