@@ -173,7 +173,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-mono text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs">
-                    Mock Data Preview
+                    Demo Preview
                   </span>
                   <Link
                     href="/login"

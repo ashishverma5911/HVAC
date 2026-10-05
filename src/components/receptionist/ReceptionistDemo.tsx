@@ -417,7 +417,7 @@ export const ReceptionistDemo: React.FC = () => {
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold mb-2 border border-emerald-200">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping" />
-              <span>Phase 5: Real-Time Browser Voice (AERIS)</span>
+              <span>Live Voice Agent (Interactive)</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               AERIS AI Receptionist Live Voice &amp; Chat Simulator
@@ -438,7 +438,7 @@ export const ReceptionistDemo: React.FC = () => {
           </div>
         </div>
 
-        {/* Phase Mode Selector Tabs */}
+        {/* Mode Selector Tabs */}
         <div className="flex border-b border-slate-200 mb-6 gap-2">
           <button
             onClick={() => setActiveMode('browser')}
@@ -449,9 +449,9 @@ export const ReceptionistDemo: React.FC = () => {
             }`}
           >
             <span>🎙️</span>
-            <span>Browser Voice &amp; Chat (Phase 5)</span>
+            <span>Browser Voice &amp; Chat</span>
             <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-              Live API
+              Interactive
             </span>
           </button>
 
@@ -464,9 +464,9 @@ export const ReceptionistDemo: React.FC = () => {
             }`}
           >
             <span>📞</span>
-            <span>Real US Telephony Bridge (Phase 6)</span>
+            <span>Inbound Phone Bridge</span>
             <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-              Twilio PSTN
+              PSTN Bridge
             </span>
           </button>
         </div>

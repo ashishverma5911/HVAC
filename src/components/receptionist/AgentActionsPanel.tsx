@@ -48,7 +48,7 @@ export const AgentActionsPanel: React.FC<AgentActionsPanelProps> = ({
         <div className="flex items-center gap-2">
           <Zap className="h-4 w-4 text-amber-500 fill-amber-500/20" />
           <h3 className="text-sm font-bold text-slate-900">
-            Agent Actions &amp; Tool Executions
+            Receptionist Actions &amp; Verification
           </h3>
         </div>
         <div className="flex items-center gap-2">
@@ -56,7 +56,7 @@ export const AgentActionsPanel: React.FC<AgentActionsPanelProps> = ({
             {actions.length} {actions.length === 1 ? 'Action' : 'Actions'}
           </span>
           <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-            Server-Validated
+            Verified
           </span>
         </div>
       </div>
@@ -65,7 +65,7 @@ export const AgentActionsPanel: React.FC<AgentActionsPanelProps> = ({
       {(leadId || appointmentId) && (
         <div className="mb-4 grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
           <div>
-            <span className="text-[10px] font-semibold uppercase text-slate-500 block">CRM Lead ID</span>
+            <span className="text-[10px] font-semibold uppercase text-slate-500 block">Lead ID</span>
             <span className="text-xs font-mono font-bold text-slate-800">
               {leadId || '—'}
             </span>
@@ -86,7 +86,7 @@ export const AgentActionsPanel: React.FC<AgentActionsPanelProps> = ({
             <Zap className="h-4 w-4 text-slate-400" />
           </div>
           <p className="text-xs font-semibold text-slate-700">
-            No Tool Executions Yet
+            No Actions Executed Yet
           </p>
           <p className="text-[11px] text-slate-500 mt-1 max-w-[260px]">
             When the AI receptionist checks service coverage, creates a CRM lead, or schedules an appointment, verified server actions appear here.

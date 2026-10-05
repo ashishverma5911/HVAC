@@ -68,7 +68,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute = 'home' }) => {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              {authState?.hasBusiness ? 'PILOT ACTIVE' : 'PROTOTYPE MODE'}
+              {authState?.hasBusiness ? 'PILOT ACTIVE' : 'LIVE DEMO'}
             </span>
             <span className="hidden sm:inline text-slate-300">
               AERIS AI Receptionist — Real-Time Voice &amp; Chat Intake for HVAC Contractors.
@@ -135,7 +135,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentRoute = 'home' }) => {
               <span>Dashboard</span>
               {!authState?.hasBusiness && (
                 <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">
-                  Mock
+                  Demo Preview
                 </span>
               )}
             </Link>

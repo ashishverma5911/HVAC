@@ -138,7 +138,7 @@ export const TelephonyPanel: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900">Twilio US Telephony Bridge</h3>
+                <h3 className="text-base font-bold text-slate-900">Inbound Phone System Bridge</h3>
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
                   isServerOnline ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                 }`}>
@@ -147,7 +147,7 @@ export const TelephonyPanel: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Bridges inbound PSTN phone calls to AERIS Voice over 8kHz μ-law WebSockets
+                Bridges inbound customer phone calls to AERIS Voice over real-time audio streams
               </p>
             </div>
           </div>
@@ -166,7 +166,7 @@ export const TelephonyPanel: React.FC = () => {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors shadow-sm"
             >
               <Radio className="w-3.5 h-3.5" />
-              {isTestingWebhook ? 'Testing...' : 'Test TwiML Webhook'}
+              {isTestingWebhook ? 'Testing...' : 'Test Voice Webhook'}
             </button>
           </div>
         </div>
@@ -177,7 +177,7 @@ export const TelephonyPanel: React.FC = () => {
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2.5 text-xs text-emerald-800">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               <div className="flex-1 font-medium">
-                <strong>Preflight Passed:</strong> Both <code className="font-mono text-emerald-900 bg-emerald-100/60 px-1 py-0.5 rounded">PUBLIC_HTTP_BASE_URL</code> and <code className="font-mono text-emerald-900 bg-emerald-100/60 px-1 py-0.5 rounded">PUBLIC_WS_BASE_URL</code> are configured for live Twilio PSTN calls.
+                <strong>Preflight Passed:</strong> Both public voice and media stream endpoints are configured for live inbound calls.
               </div>
             </div>
           ) : (
@@ -187,7 +187,7 @@ export const TelephonyPanel: React.FC = () => {
                 <span>Preflight Notice: Local Simulation Mode Active</span>
               </div>
               <p className="mt-1 text-slate-600">
-                Before connecting a real Twilio phone number, configure separate public URLs in <code className="font-mono bg-amber-100 px-1 py-0.5 rounded text-amber-900">.env.local</code>:
+                Before connecting a real phone number, configure separate public URLs in <code className="font-mono bg-amber-100 px-1 py-0.5 rounded text-amber-900">.env.local</code>:
               </p>
               <ul className="mt-1.5 list-disc list-inside space-y-0.5 text-slate-600 font-mono text-[11px]">
                 {telephonyStatus?.missingConfig?.map((item, idx) => (
@@ -218,14 +218,14 @@ export const TelephonyPanel: React.FC = () => {
         {/* Telephony Configuration Metrics Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-            <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Twilio Phone #</div>
+            <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Inbound Phone Line</div>
             <div className="text-sm font-semibold text-slate-800 mt-1 font-mono">
               {telephonyStatus?.twilioPhoneNumber || 'Not Configured'}
             </div>
           </div>
 
           <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-            <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Active PSTN Calls</div>
+            <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Active Phone Calls</div>
             <div className="text-sm font-semibold text-emerald-700 mt-1 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
               {telephonyStatus?.activeCallCount ?? 0} concurrent
@@ -244,7 +244,7 @@ export const TelephonyPanel: React.FC = () => {
             <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Security</div>
             <div className="text-sm font-semibold text-slate-800 mt-1 flex items-center gap-1">
               <Shield className="w-3.5 h-3.5 text-blue-500" />
-              HMAC-SHA1 Sig
+              Security Signature
             </div>
           </div>
         </div>
@@ -256,7 +256,7 @@ export const TelephonyPanel: React.FC = () => {
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
-                1. Twilio Voice Webhook URL (HTTP / HTTPS &mdash; for Twilio Phone Number console):
+                1. Voice Webhook URL (HTTP / HTTPS &mdash; for phone carrier webhook routing):
               </label>
               <span className="text-[10px] text-slate-500 font-mono">Port 3000 / Next.js</span>
             </div>
@@ -279,7 +279,7 @@ export const TelephonyPanel: React.FC = () => {
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                2. Media Stream WebSocket Target (WS / WSS &mdash; TwiML streams audio here):
+                2. Media Stream WebSocket Target (WS / WSS &mdash; real-time audio pipeline):
               </label>
               <span className="text-[10px] text-slate-500 font-mono">Port 8080 / Telephony Server</span>
             </div>
@@ -304,7 +304,7 @@ export const TelephonyPanel: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Volume2 className="w-4 h-4 text-blue-600" />
-            <h4 className="text-sm font-bold text-slate-900">PSTN Phone Call Activity Log</h4>
+            <h4 className="text-sm font-bold text-slate-900">Phone Call Activity Log</h4>
           </div>
           <span className="text-xs text-slate-500 font-mono">
             {telephonyStatus?.recentSessions?.length || 0} calls recorded
@@ -316,7 +316,7 @@ export const TelephonyPanel: React.FC = () => {
             <Radio className="w-8 h-8 mx-auto mb-2 text-slate-300 opacity-60" />
             No incoming phone calls received yet.
             <p className="text-[11px] text-slate-400 mt-1">
-              Calls made to your Twilio number will show live telemetry here with barge-in &amp; tool actions.
+              Calls made to your connected phone line will show live telemetry here with barge-in &amp; intake actions.
             </p>
           </div>
         ) : (
@@ -373,29 +373,29 @@ export const TelephonyPanel: React.FC = () => {
         )}
       </div>
 
-      {/* Twilio Setup Guidance Card */}
+      {/* Telephony Setup Guidance Card */}
       <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl p-5 shadow-sm">
         <h4 className="text-sm font-bold flex items-center gap-2 mb-2 text-white">
           <Phone className="w-4 h-4 text-emerald-400" />
-          Preflight Guide: Connecting Real Twilio Phone Calls in 3 Steps
+          Preflight Guide: Connecting Live Phone Calls in 3 Steps
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 text-xs">
           <div className="bg-white/10 rounded-lg p-3 backdrop-blur-xs">
-            <div className="font-bold text-emerald-400 mb-1">1. Expose Both Local Ports</div>
+            <div className="font-bold text-emerald-400 mb-1">1. Configure Public Endpoints</div>
             <p className="text-slate-300">
-              Expose port 3000 as <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">PUBLIC_HTTP_BASE_URL</code> (Next.js webhook), and port 8080 as <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">PUBLIC_WS_BASE_URL</code> (WebSocket server).
+              Set <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">PUBLIC_HTTP_BASE_URL</code> (HTTP webhook) and <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">PUBLIC_WS_BASE_URL</code> (WebSocket server).
             </p>
           </div>
           <div className="bg-white/10 rounded-lg p-3 backdrop-blur-xs">
-            <div className="font-bold text-emerald-400 mb-1">2. Configure Twilio Webhook</div>
+            <div className="font-bold text-emerald-400 mb-1">2. Configure Carrier Webhook</div>
             <p className="text-slate-300">
-              In Twilio Console &gt; Phone Numbers, set Voice Webhook to <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">POST https://PUBLIC_HTTP_BASE_URL/api/telephony/twilio/voice</code>.
+              In your voice provider console, set the Voice Webhook to <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">POST https://PUBLIC_HTTP_BASE_URL/api/telephony/twilio/voice</code>.
             </p>
           </div>
           <div className="bg-white/10 rounded-lg p-3 backdrop-blur-xs">
             <div className="font-bold text-emerald-400 mb-1">3. Dial the Phone Number</div>
             <p className="text-slate-300">
-              When Twilio calls the webhook, TwiML streams audio directly to <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">wss://PUBLIC_WS_BASE_URL/...</code> for real-time AERIS Voice AI conversation.
+              When a caller dials the number, the gateway streams audio directly to <code className="text-white font-mono bg-black/30 px-1 py-0.5 rounded">wss://PUBLIC_WS_BASE_URL/...</code> for real-time AERIS Voice AI conversation.
             </p>
           </div>
         </div>

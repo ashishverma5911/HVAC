@@ -59,7 +59,7 @@ export function VoiceControls({
 }: VoiceControlsProps) {
   const [customInput, setCustomInput] = useState('');
   const [activeTab, setActiveTab] = useState<'voice' | 'text'>('voice');
-  const [showDiagnostics, setShowDiagnostics] = useState(true);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const isVoiceCallActive =
     voiceState === 'CONNECTING' ||
@@ -150,7 +150,7 @@ export function VoiceControls({
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
-            Real-Time Voice (AERIS)
+            Live Voice (Browser)
           </button>
           <button
             type="button"
@@ -196,7 +196,7 @@ export function VoiceControls({
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Web Audio API • Native Audio In/Out • Telephony not connected yet
+                  Ultra-low latency streaming voice • Interruptible audio • Smart intake
                 </p>
               </div>
             </div>
@@ -289,7 +289,7 @@ export function VoiceControls({
             >
               <div className="flex items-center gap-2">
                 <Activity className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Live Audio Pipeline Diagnostics</span>
+                <span>Live Voice Telemetry</span>
                 {diagnostics && (
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700">
                     {diagnostics.sessionId}
@@ -319,9 +319,9 @@ export function VoiceControls({
                     </p>
                   </div>
                   <div className="p-2 rounded bg-slate-800/80 border border-slate-700">
-                    <p className="text-slate-400 text-[10px]">Live Model</p>
+                    <p className="text-slate-400 text-[10px]">Voice Engine</p>
                     <p className="text-cyan-400 font-semibold truncate">
-                      {diagnostics?.liveModel || 'gemini-3.8-live'}
+                      {diagnostics?.liveModel ? 'AERIS Voice (Real-Time)' : 'AERIS Voice'}
                     </p>
                   </div>
                   <div className="p-2 rounded bg-slate-800/80 border border-slate-700">

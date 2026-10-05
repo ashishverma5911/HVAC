@@ -25,7 +25,7 @@ export const Footer: React.FC = () => {
 
           <div>
             <h4 className="text-white font-semibold text-xs uppercase tracking-wider mb-3">
-              Prototype Navigation
+              Quick Navigation
             </h4>
             <ul className="space-y-2">
               <li>
