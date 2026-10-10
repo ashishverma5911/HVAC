@@ -269,12 +269,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let currentContents: Array<{ role: 'user' | 'model' | 'tool'; parts: any[] }> =
-      normalizedTurns.map((m) => ({
-        role: m.role,
-        parts: [{ text: m.content }],
-      }));
-
     let finalReply = '';
     let finalError: unknown;
 
@@ -282,6 +276,12 @@ export async function POST(req: NextRequest) {
       const MAX_RETRIES = 1;
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
+          let currentContents: Array<{ role: 'user' | 'model'; parts: any[] }> =
+            normalizedTurns.map((m) => ({
+              role: m.role,
+              parts: [{ text: m.content }],
+            }));
+
           let loopCount = 0;
           const MAX_TOOL_LOOPS = 4;
 
@@ -351,7 +351,7 @@ export async function POST(req: NextRequest) {
                         })),
                 },
                 {
-                  role: 'tool' as const,
+                  role: 'user' as const,
                   parts: toolResponseParts,
                 },
               ];
