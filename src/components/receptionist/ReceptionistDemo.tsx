@@ -2,17 +2,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { demoScenarios } from '@/mock/scenarios';
-import { CustomerInfo, ConversationMessage, LeadStatus, AllowedIntent, AgentAction } from '@/types';
+import { CustomerInfo, ConversationMessage, LeadStatus, AgentAction } from '@/types';
 import {
   mergeCustomerInfo,
-  extractFallbackName,
-  extractFallbackPhone,
-  extractFallbackAddress,
-  extractFallbackCity,
-  extractFallbackServiceType,
-  extractFallbackReportedIssue,
-  normalizeUrgency,
-  inferIntent,
   extractStructuredCustomerData,
 } from '@/lib/ai/extractConversationData';
 import { TranscriptArea } from './TranscriptArea';
@@ -23,6 +15,7 @@ import { VoiceControls } from './VoiceControls';
 import { AgentActionsPanel } from './AgentActionsPanel';
 import { TelephonyPanel } from './TelephonyPanel';
 import { LiveVoiceManager, VoiceState, LiveVoiceDiagnostics } from '@/lib/ai/liveVoiceManager';
+import { ContractorBusinessConfig } from '@/lib/ai/contractorConfig';
 
 const initialEmptyCustomerInfo: CustomerInfo = {
   name: '',
@@ -43,6 +36,38 @@ const INITIAL_AI_GREETING =
 export const ReceptionistDemo: React.FC = () => {
   const [activeScenarioId, setActiveScenarioId] = useState<string>(demoScenarios[0].id);
   const activeScenario = demoScenarios.find((s) => s.id === activeScenarioId) || demoScenarios[0];
+
+  // Server-verified contractor context (loaded from /api/receptionist/context)
+  const [activeContractorConfig, setActiveContractorConfig] = useState<
+    ContractorBusinessConfig | undefined
+  >(undefined);
+  const [isDemoContext, setIsDemoContext] = useState<boolean>(true);
+  const [openingGreeting, setOpeningGreeting] = useState<string>(INITIAL_AI_GREETING);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadVerifiedContext() {
+      try {
+        const res = await fetch('/api/receptionist/context');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!mounted) return;
+        if (data?.config) {
+          setActiveContractorConfig(data.config as ContractorBusinessConfig);
+          setIsDemoContext(Boolean(data.isDemo));
+        }
+        if (typeof data?.openingGreeting === 'string' && data.openingGreeting.trim()) {
+          setOpeningGreeting(data.openingGreeting.trim());
+        }
+      } catch {
+        // Keep default Summit HVAC demo context on network error
+      }
+    }
+    loadVerifiedContext();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Conversation & Session state
   const [conversationId, setConversationId] = useState<string>(() => `conv-${Date.now()}`);
@@ -78,7 +103,6 @@ export const ReceptionistDemo: React.FC = () => {
 
   // Text chat state
   const [isThinking, setIsThinking] = useState<boolean>(false);
-  const [chatErrorMessage, setChatErrorMessage] = useState<string | null>(null);
 
   // Reference to client-side LiveVoiceManager
   const voiceManagerRef = useRef<LiveVoiceManager | null>(null);
@@ -110,7 +134,7 @@ export const ReceptionistDemo: React.FC = () => {
         serviceAddress: String(inp?.serviceAddress || prev.serviceAddress),
         serviceType: String(inp?.serviceType || prev.serviceType),
         problemDescription: String(inp?.reportedIssue || prev.problemDescription),
-        urgency: (inp?.urgency as any) || prev.urgency,
+        urgency: (inp?.urgency as CustomerInfo['urgency']) || prev.urgency,
       }));
     } else if (action.toolName === 'request_appointment' && action.status === 'success') {
       const inp = action.input as Record<string, unknown>;
@@ -238,7 +262,7 @@ export const ReceptionistDemo: React.FC = () => {
       const greetingMsg: ConversationMessage = {
         id: `greeting-${Date.now()}`,
         sender: 'ai',
-        text: INITIAL_AI_GREETING,
+        text: openingGreeting,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages([greetingMsg]);
@@ -287,7 +311,6 @@ export const ReceptionistDemo: React.FC = () => {
     setVoiceErrorMessage(null);
     setDiagnostics(null);
     setIsThinking(false);
-    setChatErrorMessage(null);
     const newConvId = `conv-${Date.now()}`;
     setConversationId(newConvId);
     setLeadId(null);
@@ -302,7 +325,6 @@ export const ReceptionistDemo: React.FC = () => {
   // Text Chat Mode Handler
   const sendToGemini = async (customerText: string) => {
     setIsThinking(true);
-    setChatErrorMessage(null);
 
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const userMsg: ConversationMessage = {
@@ -317,7 +339,7 @@ export const ReceptionistDemo: React.FC = () => {
       const initialGreetingMsg: ConversationMessage = {
         id: `greeting-${Date.now() - 100}`,
         sender: 'ai',
-        text: INITIAL_AI_GREETING,
+        text: openingGreeting,
         timestamp: timeStr,
       };
       currentConversation = [initialGreetingMsg];
@@ -379,7 +401,6 @@ export const ReceptionistDemo: React.FC = () => {
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Error connecting to AI receptionist.';
-      setChatErrorMessage(errMsg);
       const systemNotice: ConversationMessage = {
         id: `err-${Date.now()}`,
         sender: 'system',
@@ -423,7 +444,11 @@ export const ReceptionistDemo: React.FC = () => {
               AERIS AI Receptionist Live Voice &amp; Chat Simulator
             </h2>
             <p className="mt-1 text-sm text-slate-600 max-w-2xl">
-              Speak naturally through your microphone with Summit HVAC&apos;s real-time voice agent powered by AERIS Voice, or type customer inquiries to test.
+              Speak naturally through your microphone with{' '}
+              <strong className="text-slate-900">
+                {activeContractorConfig?.name || 'Summit HVAC'}
+              </strong>
+              &apos;s real-time voice agent powered by AERIS Voice, or type customer inquiries to test.
             </p>
           </div>
 
@@ -516,7 +541,7 @@ export const ReceptionistDemo: React.FC = () => {
             <div className="lg:col-span-5 space-y-6">
               <CustomerInfoPanel info={customerInfo} leadId={leadId} appointmentId={appointmentId} />
               <AgentActionsPanel actions={executedActions} leadId={leadId} appointmentId={appointmentId} />
-              <BusinessInfoPanel />
+              <BusinessInfoPanel config={activeContractorConfig} isDemo={isDemoContext} />
             </div>
           </div>
         ) : (
@@ -531,7 +556,7 @@ export const ReceptionistDemo: React.FC = () => {
             <div className="lg:col-span-5 space-y-6">
               <CustomerInfoPanel info={customerInfo} leadId={leadId} appointmentId={appointmentId} />
               <AgentActionsPanel actions={executedActions} leadId={leadId} appointmentId={appointmentId} />
-              <BusinessInfoPanel />
+              <BusinessInfoPanel config={activeContractorConfig} isDemo={isDemoContext} />
             </div>
           </div>
         )}

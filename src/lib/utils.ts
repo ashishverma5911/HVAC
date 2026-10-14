@@ -13,6 +13,13 @@ export function formatLeadStatus(status: LeadStatus): { label: string; bg: strin
         text: 'text-blue-700',
         border: 'border-blue-200',
       };
+    case 'contacted':
+      return {
+        label: 'Contacted',
+        bg: 'bg-sky-50',
+        text: 'text-sky-700',
+        border: 'border-sky-200',
+      };
     case 'qualified':
       return {
         label: 'Qualified',
@@ -34,12 +41,33 @@ export function formatLeadStatus(status: LeadStatus): { label: string; bg: strin
         text: 'text-purple-700',
         border: 'border-purple-200',
       };
+    case 'converted':
+      return {
+        label: 'Converted',
+        bg: 'bg-emerald-100',
+        text: 'text-emerald-800',
+        border: 'border-emerald-300',
+      };
     case 'completed':
       return {
         label: 'Completed',
         bg: 'bg-slate-100',
         text: 'text-slate-700',
         border: 'border-slate-300',
+      };
+    case 'closed_not_proceeding':
+      return {
+        label: 'Closed / Not Proceeding',
+        bg: 'bg-slate-100',
+        text: 'text-slate-600',
+        border: 'border-slate-300',
+      };
+    default:
+      return {
+        label: 'New Lead',
+        bg: 'bg-blue-50',
+        text: 'text-blue-700',
+        border: 'border-blue-200',
       };
   }
 }

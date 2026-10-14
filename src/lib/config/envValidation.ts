@@ -20,8 +20,15 @@ export interface EnvValidationResult {
       status: 'ready' | 'missing_credentials' | 'client_only';
       urlConfigured: boolean;
     };
+    telephony: {
+      twilioConfigured: boolean;
+      publicWsConfigured: boolean;
+      status: 'ready' | 'not_configured';
+      missingConfig: string[];
+    };
   };
   missingRequiredServerSecrets: string[];
+  readyForLivePstn: boolean;
 }
 
 export function validateEnvironment(): EnvValidationResult {
@@ -31,6 +38,11 @@ export function validateEnvironment(): EnvValidationResult {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+  const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+  const publicWsBaseUrl = process.env.PUBLIC_WS_BASE_URL;
 
   const missingSecrets: string[] = [];
   if (!geminiKey || geminiKey.trim().length === 0) {
@@ -46,9 +58,34 @@ export function validateEnvironment(): EnvValidationResult {
     missingSecrets.push('SUPABASE_SERVICE_ROLE_KEY');
   }
 
+  const missingTelephonyConfig: string[] = [];
+  if (!twilioAccountSid || twilioAccountSid.trim().length === 0) {
+    missingTelephonyConfig.push('TWILIO_ACCOUNT_SID');
+  }
+  if (!twilioAuthToken || twilioAuthToken.trim().length === 0) {
+    missingTelephonyConfig.push('TWILIO_AUTH_TOKEN');
+  }
+  if (!twilioPhoneNumber || twilioPhoneNumber.trim().length === 0) {
+    missingTelephonyConfig.push('TWILIO_PHONE_NUMBER');
+  }
+  if (!publicWsBaseUrl || publicWsBaseUrl.trim().length === 0) {
+    missingTelephonyConfig.push('PUBLIC_WS_BASE_URL');
+  }
+
   const geminiReady = !!geminiKey && geminiKey.trim().length > 0;
   const supabaseClientReady = !!supabaseUrl && !!supabaseAnonKey;
   const supabaseAdminReady = supabaseClientReady && !!supabaseServiceKey;
+  const twilioConfigured =
+    !!twilioAccountSid &&
+    twilioAccountSid.trim().length > 0 &&
+    !!twilioAuthToken &&
+    twilioAuthToken.trim().length > 0;
+  const publicWsConfigured = !!publicWsBaseUrl && publicWsBaseUrl.trim().length > 0;
+  const telephonyReady =
+    twilioConfigured &&
+    publicWsConfigured &&
+    !!twilioPhoneNumber &&
+    twilioPhoneNumber.trim().length > 0;
 
   const supabaseStatus = supabaseAdminReady
     ? 'ready'
@@ -56,8 +93,10 @@ export function validateEnvironment(): EnvValidationResult {
     ? 'client_only'
     : 'missing_credentials';
 
+  const coreHealthy = geminiReady && supabaseAdminReady;
+
   return {
-    healthy: geminiReady && supabaseAdminReady,
+    healthy: coreHealthy,
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     services: {
@@ -72,7 +111,14 @@ export function validateEnvironment(): EnvValidationResult {
         status: supabaseStatus,
         urlConfigured: !!supabaseUrl && supabaseUrl.startsWith('https://'),
       },
+      telephony: {
+        twilioConfigured,
+        publicWsConfigured,
+        status: telephonyReady ? 'ready' : 'not_configured',
+        missingConfig: missingTelephonyConfig,
+      },
     },
     missingRequiredServerSecrets: missingSecrets,
+    readyForLivePstn: coreHealthy && telephonyReady,
   };
 }

@@ -9,7 +9,14 @@ import { Bot, Mail, Lock, AlertCircle, ArrowRight, CheckCircle2, Loader2, ArrowL
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTarget = searchParams.get('redirect') || '/dashboard';
+  const rawRedirect = searchParams.get('redirect');
+  const redirectTarget =
+    rawRedirect &&
+    rawRedirect.startsWith('/') &&
+    !rawRedirect.startsWith('//') &&
+    !rawRedirect.startsWith('/\\')
+      ? rawRedirect
+      : '/dashboard';
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');

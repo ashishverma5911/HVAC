@@ -3,12 +3,24 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { CallSessionManager } from '../lib/telephony/callSessionManager';
 import { GeminiTelephonyBridge } from '../lib/telephony/geminiTelephonyBridge';
 import { decodeTwilioMediaPayload } from '../lib/telephony/audioCodec';
-import { validateTwilioWebhookSignature } from '../lib/telephony/twilioSecurity';
+import {
+  createStreamCorrelationToken,
+  resolveWebhookCandidateUrls,
+  validateTwilioWebhookMultiUrl,
+} from '../lib/telephony/twilioSecurity';
 import { getTelephonyEndpoints } from '../lib/telephony/telephonyConfig';
-import { ContractorPersistenceService, normalizeToUuid } from '../lib/services/contractorPersistence';
-import { createAdminClient } from '../lib/supabase/admin';
+import { resolveInboundDestinationRouteAsync } from '../lib/telephony/tenantPhoneMapping';
+import {
+  buildCallFailureFallbackTwiml,
+  buildInboundStreamTwiml,
+  buildUnknownDestinationTwiml,
+} from '../lib/telephony/twimlBuilder';
+import { ContractorPersistenceService } from '../lib/services/contractorPersistence';
+import { stripUntrustedTenantIds } from '../lib/validation/tenantSanitizer';
 import { logDiagnosticEvent } from '../lib/diagnostics/logger';
 import { maskPhone } from '../lib/diagnostics/piiMask';
+import { normalizeCallerPhoneInput } from '../lib/compliance/callPrivacyAndCompliance';
+import { validateContractorConfiguration } from '../lib/ai/contractorConfig';
 
 // Load local environment files in development if present
 try {
@@ -25,29 +37,25 @@ const sessionManager = CallSessionManager.getInstance();
 const activeBridges = new Map<string, GeminiTelephonyBridge>();
 
 /**
- * Builds the TwiML response instructing Twilio to fork/stream the call audio over WebSockets.
+ * Parses URLSearchParams or JSON from raw POST body buffer.
  */
-function buildTwimlResponse(streamUrl: string, callerPhone: string, calledPhone: string): string {
-  // Escape XML characters in phone numbers for safety
-  const safeCaller = callerPhone.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const safeCalled = calledPhone.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Connect>
-    <Stream url="${streamUrl}">
-      <Parameter name="callerPhone" value="${safeCaller}" />
-      <Parameter name="calledPhone" value="${safeCalled}" />
-    </Stream>
-  </Connect>
-</Response>`;
-}
-
-/**
- * Parses URLSearchParams from raw POST body buffer.
- */
-function parseUrlEncodedBody(rawBody: string): Record<string, string> {
+function parseWebhookBody(rawBody: string, contentType?: string): Record<string, string> {
   const params: Record<string, string> = {};
+  if (contentType && contentType.includes('application/json')) {
+    try {
+      const parsed = JSON.parse(rawBody);
+      if (parsed && typeof parsed === 'object') {
+        for (const [k, v] of Object.entries(parsed)) {
+          if (v !== undefined && v !== null) {
+            params[k] = String(v);
+          }
+        }
+        return params;
+      }
+    } catch {
+      // Fallback to URLSearchParams
+    }
+  }
   const searchParams = new URLSearchParams(rawBody);
   searchParams.forEach((val, key) => {
     params[key] = val;
@@ -127,55 +135,319 @@ export function createTelephonyServer(): {
     if (url.pathname === '/api/telephony/twilio/voice' && req.method === 'POST') {
       const chunks: Buffer[] = [];
       req.on('data', (chunk) => chunks.push(chunk));
-      req.on('end', () => {
-        const rawBody = Buffer.concat(chunks).toString('utf-8');
-        const params = parseUrlEncodedBody(rawBody);
+      req.on('end', async () => {
+        try {
+          const rawBody = Buffer.concat(chunks).toString('utf-8');
+          const params = parseWebhookBody(rawBody, req.headers['content-type']);
 
-        const authToken = process.env.TWILIO_AUTH_TOKEN || '';
-        const twilioSignature = (req.headers['x-twilio-signature'] as string) || '';
-        const hostHeader = req.headers.host || 'localhost:8080';
-        const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
-        const endpoints = getTelephonyEndpoints(hostHeader, proto === 'https');
+          const authToken = process.env.TWILIO_AUTH_TOKEN || '';
+          const twilioSignature = (req.headers['x-twilio-signature'] as string) || null;
+          const hostHeader = req.headers.host || 'localhost:8080';
+          const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
+          const endpoints = getTelephonyEndpoints(hostHeader, proto === 'https');
+          const candidateUrls = resolveWebhookCandidateUrls(
+            `${proto}://${hostHeader}${url.pathname}${url.search}`,
+            req.headers,
+            endpoints.webhookUrl
+          );
 
-        if (authToken && !validateTwilioWebhookSignature(authToken, twilioSignature, endpoints.webhookUrl, params)) {
-          console.warn(`[Telephony Server] Rejected request with invalid Twilio signature for URL: ${endpoints.webhookUrl}`);
-          logDiagnosticEvent({
-            event: 'CALL_ERROR',
-            error: 'Rejected request with invalid Twilio signature',
-            details: { webhookUrl: endpoints.webhookUrl },
+          const sigCheck = validateTwilioWebhookMultiUrl(
+            authToken,
+            twilioSignature,
+            candidateUrls,
+            params
+          );
+          if (!sigCheck.valid) {
+            console.warn(
+              `[Telephony Server] Rejected request with invalid Twilio signature (${sigCheck.reason}) for URL: ${endpoints.webhookUrl}`
+            );
+            logDiagnosticEvent({
+              event: 'CALL_ERROR',
+              error: 'Rejected request with invalid Twilio signature',
+              details: { webhookUrl: endpoints.webhookUrl, reason: sigCheck.reason },
+            });
+            res.writeHead(403, { 'Content-Type': 'text/plain' });
+            res.end('Forbidden: Invalid Twilio Webhook Signature');
+            return;
+          }
+
+          // Strip any untrusted caller/client-supplied contractor IDs
+          const untrustedCheck: Record<string, unknown> = { ...params };
+          url.searchParams.forEach((v, k) => {
+            untrustedCheck[k] = v;
           });
-          res.writeHead(403, { 'Content-Type': 'text/plain' });
-          res.end('Forbidden: Invalid Twilio Webhook Signature');
-          return;
+          stripUntrustedTenantIds(untrustedCheck);
+
+          const callerPhone = normalizeCallerPhoneInput(params.From || params.Caller || null);
+          const calledPhone = (params.To || params.Called || '').trim();
+          const forwardedFrom = (params.ForwardedFrom || '').trim() || undefined;
+          const callSid = (params.CallSid || `CALL-${Date.now()}`).trim();
+
+          // Duplicate webhook idempotency check by CallSid
+          const existingReg = sessionManager.getWebhookRegistration(callSid);
+          if (existingReg) {
+            const dup = sessionManager.registerInboundWebhook({
+              callSid: existingReg.callSid,
+              callerPhone: existingReg.callerPhone,
+              calledPhone: existingReg.calledPhone,
+              forwardedFrom: existingReg.forwardedFrom,
+              businessId: existingReg.businessId,
+              businessConfig: existingReg.businessConfig,
+              correlationToken: existingReg.correlationToken,
+              twiml: existingReg.twiml,
+            });
+            res.writeHead(200, {
+              'Content-Type': 'text/xml; charset=utf-8',
+              'Content-Length': Buffer.byteLength(dup.registration.twiml),
+              'X-Aeris-Webhook-Duplicate': 'true',
+              'X-Aeris-Contractor-Id': existingReg.businessId,
+            });
+            res.end(dup.registration.twiml);
+            return;
+          }
+
+          logDiagnosticEvent({
+            event: 'CALL_RECEIVED',
+            conversationId: callSid,
+            details: {
+              callerPhone: maskPhone(callerPhone),
+              calledPhone: maskPhone(calledPhone),
+            },
+          });
+
+          logDiagnosticEvent({
+            event: 'TWILIO_SIGNATURE_VALIDATED',
+            conversationId: callSid,
+          });
+
+          // Map destination phone number (`To` / `Called`) to contractor
+          const routeResult = await resolveInboundDestinationRouteAsync(calledPhone, {
+            untrustedPayload: untrustedCheck,
+          });
+
+          if (!routeResult.matched) {
+            console.warn(
+              `[Telephony Server] Rejecting call ${callSid} to unassigned/invalid destination number "${calledPhone}" (${routeResult.reason})`
+            );
+            const unknownTwiml = buildUnknownDestinationTwiml(calledPhone);
+            res.writeHead(200, {
+              'Content-Type': 'text/xml; charset=utf-8',
+              'Content-Length': Buffer.byteLength(unknownTwiml),
+              'X-Aeris-Route-Status': routeResult.reason,
+            });
+            res.end(unknownTwiml);
+            return;
+          }
+
+          const { businessId, businessConfig } = routeResult;
+
+          await ContractorPersistenceService.ensureConversation(
+            businessId,
+            callSid,
+            'telephony',
+            callerPhone || undefined,
+            calledPhone
+          ).catch(() => {});
+
+          await ContractorPersistenceService.persistCallEvent(
+            businessId,
+            callSid,
+            'INBOUND_WEBHOOK_ROUTED',
+            {
+              callSid,
+              callerPhone,
+              calledPhone,
+              forwardedFrom: forwardedFrom || null,
+              contractorName: businessConfig?.name || null,
+              routeSource: routeResult.routeSource,
+            }
+          ).catch(() => {});
+
+          const configValidation = validateContractorConfiguration(businessConfig);
+          if (!configValidation.valid || !configValidation.config) {
+            const errReason = configValidation.reason || 'Invalid contractor configuration';
+            sessionManager.markSessionFailure(callSid, errReason);
+            await ContractorPersistenceService.persistCallStatusUpdate(businessId, callSid, {
+              callStatus: 'failed',
+              errorCode: 'INVALID_CONTRACTOR_CONFIGURATION',
+              errorMessage: errReason,
+              callerPhone,
+              calledPhone,
+            }).catch(() => {});
+            const fallbackTwiml = buildCallFailureFallbackTwiml(null, { calledPhone });
+            res.writeHead(200, {
+              'Content-Type': 'text/xml; charset=utf-8',
+              'Content-Length': Buffer.byteLength(fallbackTwiml),
+              'X-Aeris-Route-Status': 'INVALID_CONTRACTOR_CONFIGURATION',
+              'X-Aeris-Contractor-Id': businessId,
+            });
+            res.end(fallbackTwiml);
+            return;
+          }
+
+          const validatedConfig = configValidation.config;
+
+          if (process.env.FORCE_AI_SESSION_UNAVAILABLE === 'true') {
+            console.error(
+              `[Telephony Server] AI session unavailable for CallSid=${callSid} (Contractor=${validatedConfig.name}). Returning fallback TwiML.`
+            );
+            sessionManager.markSessionFailure(callSid, 'AI receptionist session unavailable');
+            await ContractorPersistenceService.persistCallStatusUpdate(businessId, callSid, {
+              callStatus: 'failed',
+              errorCode: 'AI_SESSION_UNAVAILABLE',
+              errorMessage: 'AI receptionist session unavailable',
+              callerPhone,
+              calledPhone,
+            }).catch(() => {});
+            const fallbackTwiml = buildCallFailureFallbackTwiml(validatedConfig, { calledPhone });
+            res.writeHead(200, {
+              'Content-Type': 'text/xml; charset=utf-8',
+              'Content-Length': Buffer.byteLength(fallbackTwiml),
+              'X-Aeris-Route-Status': 'FALLBACK_UNAVAILABLE',
+              'X-Aeris-Contractor-Id': businessId,
+            });
+            res.end(fallbackTwiml);
+            return;
+          }
+
+          const correlationToken = createStreamCorrelationToken({
+            callSid,
+            calledPhone,
+            callerPhone: callerPhone || '',
+            businessId,
+          });
+
+          const twiml = buildInboundStreamTwiml({
+            wsUrl: endpoints.streamUrl,
+            callerPhone: callerPhone || '',
+            calledPhone,
+            callSid,
+            businessId,
+            correlationToken,
+            forwardedFrom,
+            businessConfig: validatedConfig,
+          });
+
+          sessionManager.registerInboundWebhook({
+            callSid,
+            callerPhone,
+            calledPhone,
+            forwardedFrom,
+            businessId,
+            businessConfig: validatedConfig,
+            correlationToken,
+            twiml,
+          });
+
+          console.log(
+            `[Telephony Server] Inbound phone call routed: CallSid=${callSid}, From=${maskPhone(callerPhone)}, Contractor=${validatedConfig.name} (${businessId})`
+          );
+
+          res.writeHead(200, {
+            'Content-Type': 'text/xml; charset=utf-8',
+            'Content-Length': Buffer.byteLength(twiml),
+            'X-Aeris-Route-Status': 'MATCHED',
+            'X-Aeris-Contractor-Id': businessId,
+          });
+          res.end(twiml);
+        } catch (err) {
+          console.error('[Telephony Server] Error processing voice webhook:', err);
+          const fallbackTwiml = buildCallFailureFallbackTwiml(null);
+          res.writeHead(200, {
+            'Content-Type': 'text/xml; charset=utf-8',
+            'Content-Length': Buffer.byteLength(fallbackTwiml),
+          });
+          res.end(fallbackTwiml);
         }
+      });
+      return;
+    }
 
-        const callerPhone = params.From || '';
-        const calledPhone = params.To || '';
-        const callSid = params.CallSid || `CALL-${Date.now()}`;
+    // 4. Twilio Call Status Callback Webhook (POST /api/telephony/twilio/status)
+    if (url.pathname === '/api/telephony/twilio/status' && req.method === 'POST') {
+      const chunks: Buffer[] = [];
+      req.on('data', (chunk) => chunks.push(chunk));
+      req.on('end', async () => {
+        try {
+          const rawBody = Buffer.concat(chunks).toString('utf-8');
+          const params = parseWebhookBody(rawBody, req.headers['content-type']);
+          const authToken = process.env.TWILIO_AUTH_TOKEN || '';
+          const twilioSignature = (req.headers['x-twilio-signature'] as string) || null;
+          const hostHeader = req.headers.host || 'localhost:8080';
+          const proto = (req.headers['x-forwarded-proto'] as string) || 'https';
+          const candidateUrls = resolveWebhookCandidateUrls(
+            `${proto}://${hostHeader}${url.pathname}${url.search}`,
+            req.headers
+          );
 
-        logDiagnosticEvent({
-          event: 'CALL_RECEIVED',
-          conversationId: callSid,
-          details: {
-            callerPhone: maskPhone(callerPhone),
-            calledPhone: maskPhone(calledPhone),
-          },
-        });
+          const sigCheck = validateTwilioWebhookMultiUrl(
+            authToken,
+            twilioSignature,
+            candidateUrls,
+            params
+          );
+          if (!sigCheck.valid) {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Forbidden: Invalid Twilio Signature' }));
+            return;
+          }
 
-        logDiagnosticEvent({
-          event: 'TWILIO_SIGNATURE_VALIDATED',
-          conversationId: callSid,
-        });
+          const callSid = (params.CallSid || '').trim();
+          const callStatus = (params.CallStatus || '').trim();
+          const callDurationRaw = params.CallDuration || params.Duration || '';
+          const callDuration = callDurationRaw ? parseInt(callDurationRaw, 10) : undefined;
+          const errorCode = params.ErrorCode?.trim() || null;
+          const errorMessage = params.ErrorMessage?.trim() || null;
+          const callerPhone = normalizeCallerPhoneInput(params.From || params.Caller || null);
+          const calledPhone = (params.To || params.Called || '').trim() || null;
 
-        console.log(`[Telephony Server] Inbound phone call received: CallSid=${callSid}, From=${maskPhone(callerPhone)}`);
+          if (!callSid || !callStatus) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing CallSid or CallStatus' }));
+            return;
+          }
 
-        const twiml = buildTwimlResponse(endpoints.streamUrl, callerPhone, calledPhone);
+          const callbackResult = sessionManager.recordCallStatusCallback({
+            callSid,
+            callStatus,
+            callDuration: Number.isFinite(callDuration) ? callDuration : undefined,
+            errorCode,
+            errorMessage,
+          });
 
-        res.writeHead(200, {
-          'Content-Type': 'text/xml; charset=utf-8',
-          'Content-Length': Buffer.byteLength(twiml),
-        });
-        res.end(twiml);
+          let businessId = callbackResult.businessId;
+          if (!businessId && calledPhone) {
+            const routeRes = await resolveInboundDestinationRouteAsync(calledPhone);
+            if (routeRes.matched) {
+              businessId = routeRes.businessId;
+            }
+          }
+
+          if (businessId) {
+            await ContractorPersistenceService.persistCallStatusUpdate(businessId, callSid, {
+              callStatus: callbackResult.normalizedStatus,
+              durationSeconds: Number.isFinite(callDuration) ? callDuration : undefined,
+              errorCode,
+              errorMessage,
+              callerPhone,
+              calledPhone,
+            });
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              success: true,
+              callSid,
+              callStatus: callbackResult.normalizedStatus,
+              businessId,
+            })
+          );
+        } catch (err) {
+          console.error('[Telephony Server] Error processing status callback:', err);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Internal Server Error' }));
+        }
       });
       return;
     }
@@ -213,21 +485,44 @@ export function createTelephonyServer(): {
           }
 
           case 'start': {
-            const streamSid = msg.streamSid;
-            const callSid = msg.start?.callSid || `CALL-${Date.now()}`;
-            const customParams = msg.start?.customParameters || {};
-            const callerPhone = customParams.callerPhone || msg.start?.callerPhone || null;
-            const calledPhone = customParams.calledPhone || msg.start?.calledPhone || null;
+            const rawStreamSid = msg.streamSid || msg.start?.streamSid;
+            const rawCallSid = msg.start?.callSid || msg.start?.customParameters?.callSid || `CALL-${Date.now()}`;
+            const customParams = {
+              ...(msg.start?.customParameters || {}),
+              ...(msg.start?.callerPhone ? { callerPhone: msg.start.callerPhone } : {}),
+              ...(msg.start?.calledPhone ? { calledPhone: msg.start.calledPhone } : {}),
+            };
+
+            const validation = await sessionManager.validateAndCorrelateStreamStart({
+              streamSid: rawStreamSid,
+              callSid: rawCallSid,
+              customParameters: customParams,
+            });
+
+            if (!validation.valid || !validation.businessId || !validation.businessConfig) {
+              console.warn(
+                `[Telephony Server] Rejecting Media Stream start event (streamSid=${rawStreamSid}, callSid=${rawCallSid}): ${validation.reason}`
+              );
+              ws.close(1008, validation.reason || 'Invalid stream start');
+              return;
+            }
+
+            const { streamSid, callSid, callerPhone, calledPhone, businessId, businessConfig } =
+              validation;
 
             currentStreamSid = streamSid;
-            console.log(`[Telephony Server] Call started: streamSid=${streamSid}, callSid=${callSid}`);
+            console.log(
+              `[Telephony Server] Call started: streamSid=${streamSid}, callSid=${callSid}, contractor=${businessConfig.name} (${businessId})`
+            );
 
-            // Initialize isolated call session
+            // Initialize isolated call session with immutable contractor binding
             const session = sessionManager.createSession({
               callSid,
               streamSid,
               callerPhone,
               calledPhone,
+              businessId,
+              businessConfig,
               onDurationLimitReached: (s) => {
                 console.log(`[Telephony Server] Call limit watchdog reached for stream ${s.streamSid}. Closing WebSocket.`);
                 try {
@@ -245,15 +540,27 @@ export function createTelephonyServer(): {
               details: { streamSid },
             });
 
-            // Ensure conversation record in database
+            // Ensure conversation record in database and record call_answered lifecycle event
             ContractorPersistenceService.ensureConversation(
               session.businessId,
               callSid,
               'telephony',
-              callerPhone || undefined
+              callerPhone || undefined,
+              calledPhone || undefined
             ).catch((err) => {
               console.warn('[Telephony Server] Non-fatal: Conversation row ensure failed:', err?.message || err);
             });
+
+            ContractorPersistenceService.recordCallLifecycleEvent(
+              session.businessId,
+              callSid,
+              'call_answered',
+              {
+                streamSid,
+                callerPhone: session.callerPhone,
+                calledPhone: session.calledPhone,
+              }
+            ).catch(() => {});
 
             // Initialize Gemini Live bridge for this call
             try {
@@ -261,8 +568,20 @@ export function createTelephonyServer(): {
               activeBridges.set(streamSid, bridge);
               await bridge.connect();
             } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
               console.error(`[Telephony Server] Failed to connect Gemini Live bridge for ${streamSid}:`, err);
-              sessionManager.terminateSession(streamSid, 'Bridge initialization failure');
+              sessionManager.markSessionFailure(streamSid, `Bridge initialization failure: ${errMsg}`);
+              await ContractorPersistenceService.persistCallStatusUpdate(
+                session.businessId,
+                callSid,
+                {
+                  callStatus: 'failed',
+                  errorCode: 'GEMINI_BRIDGE_INIT_FAILED',
+                  errorMessage: `Bridge initialization failure: ${errMsg}`,
+                  callerPhone: session.callerPhone,
+                  calledPhone: session.calledPhone,
+                }
+              ).catch(() => {});
               ws.close(1011, 'Gemini bridge error');
             }
             break;
@@ -292,6 +611,9 @@ export function createTelephonyServer(): {
             const streamSid = msg.streamSid || currentStreamSid;
             console.log(`[Telephony Server] Twilio stream 'stop' event received for streamSid=${streamSid}`);
             if (streamSid) {
+              if (bridge) {
+                bridge.flushPendingTranscripts('twilio_stream_stop');
+              }
               const session = sessionManager.getSessionByStream(streamSid);
               sessionManager.terminateSession(streamSid, 'Twilio stream stop event');
 
@@ -304,24 +626,17 @@ export function createTelephonyServer(): {
                   durationMs: (session.metrics.durationSeconds || 0) * 1000,
                 });
 
-                // Update database conversation row to ended
-                if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-                  try {
-                    const admin = createAdminClient();
-                    const convUuid = normalizeToUuid(session.callSid);
-                    admin
-                      .from('conversations')
-                      .update({
-                        status: 'ended',
-                        ended_at: new Date().toISOString(),
-                      })
-                      .eq('id', convUuid)
-                      .then(
-                        () => {},
-                        () => {}
-                      );
-                  } catch {}
-                }
+                ContractorPersistenceService.persistCallStatusUpdate(
+                  session.businessId,
+                  session.callSid,
+                  {
+                    callStatus: session.failed ? 'failed' : 'completed',
+                    durationSeconds: session.metrics.durationSeconds,
+                    endedAt: new Date().toISOString(),
+                    callerPhone: session.callerPhone,
+                    calledPhone: session.calledPhone,
+                  }
+                ).catch(() => {});
               }
 
               if (bridge) {
@@ -342,9 +657,49 @@ export function createTelephonyServer(): {
     });
 
     ws.on('close', (code, reason) => {
-      console.log(`[Telephony Server] WebSocket closed for stream ${currentStreamSid || 'unknown'} (code: ${code}, reason: "${reason}")`);
+      const reasonStr = reason ? reason.toString() : '';
+      console.log(
+        `[Telephony Server] WebSocket closed for stream ${currentStreamSid || 'unknown'} (code: ${code}, reason: "${reasonStr}")`
+      );
       if (currentStreamSid) {
-        sessionManager.terminateSession(currentStreamSid, `WebSocket closed (${code})`);
+        const session = sessionManager.getSessionByStream(currentStreamSid);
+        const wasAlreadyEnded = Boolean(session?.ended);
+
+        if (bridge) {
+          bridge.flushPendingTranscripts(
+            code !== 1000 && code !== 1005 ? 'abnormal_ws_disconnect' : 'ws_closed'
+          );
+        }
+
+        if (session && !wasAlreadyEnded) {
+          const isAbnormalDisconnect = code !== 1000 && code !== 1005;
+          if (isAbnormalDisconnect) {
+            sessionManager.markSessionFailure(
+              currentStreamSid,
+              `WebSocket disconnected unexpectedly (code ${code}: ${reasonStr || 'abnormal closure'})`
+            );
+          } else {
+            sessionManager.terminateSession(currentStreamSid, `WebSocket closed (${code})`);
+          }
+
+          ContractorPersistenceService.persistCallStatusUpdate(
+            session.businessId,
+            session.callSid,
+            {
+              callStatus: isAbnormalDisconnect ? 'failed' : 'completed',
+              durationSeconds: session.metrics.durationSeconds,
+              errorCode: isAbnormalDisconnect ? `WS_CLOSE_${code}` : null,
+              errorMessage: isAbnormalDisconnect
+                ? `WebSocket disconnected unexpectedly (code ${code})`
+                : null,
+              callerPhone: session.callerPhone,
+              calledPhone: session.calledPhone,
+            }
+          ).catch(() => {});
+        } else {
+          sessionManager.terminateSession(currentStreamSid, `WebSocket closed (${code})`);
+        }
+
         if (bridge) {
           bridge.close();
           bridge = null;
@@ -355,6 +710,10 @@ export function createTelephonyServer(): {
 
     ws.on('error', (err) => {
       console.error(`[Telephony Server] WebSocket error on stream ${currentStreamSid}:`, err);
+      if (currentStreamSid) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        sessionManager.markSessionFailure(currentStreamSid, `WebSocket error: ${errMsg}`);
+      }
     });
   });
 
@@ -399,7 +758,10 @@ export function createTelephonyServer(): {
         console.error('[Telephony Server] Error closing WebSocket server:', wsErr);
       }
 
-      // 5. Close HTTP server
+      // 5. Close HTTP server (including idle keep-alive sockets)
+      if (typeof (server as any).closeAllConnections === 'function') {
+        (server as any).closeAllConnections();
+      }
       server.close((httpErr) => {
         if (httpErr) {
           console.error('[Telephony Server] Error closing HTTP server:', httpErr);

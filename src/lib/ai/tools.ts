@@ -1,5 +1,6 @@
 import { FunctionDeclaration, Type } from '@google/genai';
 import { ContractorBusinessConfig, DEFAULT_SUMMIT_HVAC_CONFIG } from './contractorConfig';
+import { getIndustryTemplate } from './industryTemplates';
 
 /**
  * Builds the exact 6 Phase 4 receptionist tool declarations dynamically
@@ -15,6 +16,7 @@ import { ContractorBusinessConfig, DEFAULT_SUMMIT_HVAC_CONFIG } from './contract
  * All parameter types, required fields, and tool names remain strictly intact.
  */
 export function buildReceptionistTools(config: ContractorBusinessConfig): FunctionDeclaration[] {
+  const template = getIndustryTemplate(config.industry);
   const serviceAreaDesc =
     config.serviceAreas.length > 0
       ? config.serviceAreas.join(', ')
@@ -72,7 +74,7 @@ export function buildReceptionistTools(config: ContractorBusinessConfig): Functi
           },
           serviceType: {
             type: Type.STRING,
-            description: 'Type of service requested (e.g. AC Repair, Heating Repair, HVAC Maintenance, AC Installation).',
+            description: `Type of service requested (e.g. ${template.serviceTypeExamples}).`,
           },
           reportedIssue: {
             type: Type.STRING,

@@ -75,6 +75,7 @@ export async function POST(req: Request) {
       businessConfig: tenant.config,
       businessId: tenant.businessId,
       isDemo: tenant.isDemo,
+      channel: 'web_voice',
     });
 
     const durationMs = Date.now() - startTime;

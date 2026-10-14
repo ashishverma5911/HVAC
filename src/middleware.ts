@@ -71,7 +71,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // If user already has a business, redirect to dashboard
+    // If user already has a business, check if onboarding is still incomplete (draft) or explicitly resuming
     const { data: member } = await supabase
       .from('users')
       .select('business_id')
@@ -79,6 +79,27 @@ export async function middleware(request: NextRequest) {
       .maybeSingle();
 
     if (member && member.business_id) {
+      const resumeParam = request.nextUrl.searchParams.get('resume');
+      if (resumeParam === '1') {
+        return supabaseResponse;
+      }
+
+      const { data: settings } = await supabase
+        .from('business_settings')
+        .select('business_hours')
+        .eq('business_id', member.business_id)
+        .maybeSingle();
+
+      const rawHours =
+        settings?.business_hours && typeof settings.business_hours === 'object'
+          ? (settings.business_hours as Record<string, unknown>)
+          : {};
+
+      // Allow staying on /onboarding if onboardingCompleted is explicitly false (resuming incomplete onboarding)
+      if (rawHours.onboardingCompleted === false) {
+        return supabaseResponse;
+      }
+
       const dashboardUrl = request.nextUrl.clone();
       dashboardUrl.pathname = '/dashboard';
       return NextResponse.redirect(dashboardUrl);
@@ -94,11 +115,33 @@ export async function middleware(request: NextRequest) {
         .eq('id', user.id)
         .maybeSingle();
 
-      const redirectParam = request.nextUrl.searchParams.get('redirect');
+      const rawRedirectParam = request.nextUrl.searchParams.get('redirect');
+      const safeRedirectPath =
+        rawRedirectParam &&
+        rawRedirectParam.startsWith('/') &&
+        !rawRedirectParam.startsWith('//') &&
+        !rawRedirectParam.startsWith('/\\')
+          ? rawRedirectParam.split('?')[0]
+          : '/dashboard';
       const targetUrl = request.nextUrl.clone();
 
       if (member && member.business_id) {
-        targetUrl.pathname = redirectParam || '/dashboard';
+        const { data: settings } = await supabase
+          .from('business_settings')
+          .select('business_hours')
+          .eq('business_id', member.business_id)
+          .maybeSingle();
+
+        const rawHours =
+          settings?.business_hours && typeof settings.business_hours === 'object'
+            ? (settings.business_hours as Record<string, unknown>)
+            : {};
+
+        if (rawHours.onboardingCompleted === false) {
+          targetUrl.pathname = '/onboarding';
+        } else {
+          targetUrl.pathname = safeRedirectPath || '/dashboard';
+        }
       } else {
         targetUrl.pathname = '/onboarding';
       }

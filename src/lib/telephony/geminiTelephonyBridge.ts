@@ -2,11 +2,11 @@ import { GoogleGenAI, Modality } from '@google/genai';
 import { WebSocket } from 'ws';
 import { buildReceptionistTools } from '../ai/tools';
 import { buildReceptionistSystemInstruction } from '../ai/receptionistPrompt';
+import { validateContractorConfiguration } from '../ai/contractorConfig';
 import { executeAgentToolAsync } from '../ai/toolExecutor';
 import { TelephonyCallSession, CallSessionManager } from './callSessionManager';
 import { ContractorPersistenceService } from '../services/contractorPersistence';
 import { logDiagnosticEvent } from '../diagnostics/logger';
-import { maskPhone } from '../diagnostics/piiMask';
 import {
   pcm16ToBase64,
   base64ToPcm16,
@@ -39,21 +39,100 @@ export class GeminiTelephonyBridge {
   }
 
   /**
+   * Flushes any buffered partial user or AI transcripts when a call is interrupted,
+   * fails, or disconnects mid-turn so incomplete sessions are honestly preserved.
+   */
+  public flushPendingTranscripts(reason: string = 'session_interrupted_or_closed'): void {
+    if (this.pendingUserText.trim().length > 0) {
+      const userText = this.pendingUserText.trim();
+      this.pendingUserText = '';
+      CallSessionManager.getInstance().recordCustomerUtterance(this.session.streamSid, userText);
+      ContractorPersistenceService.persistMessage(
+        this.session.businessId,
+        this.session.callSid,
+        'customer',
+        userText,
+        { incomplete: true, reason }
+      ).catch(() => {});
+    }
+
+    if (this.pendingAiText.trim().length > 0) {
+      const aiText = this.pendingAiText.trim();
+      this.pendingAiText = '';
+      ContractorPersistenceService.persistMessage(
+        this.session.businessId,
+        this.session.callSid,
+        'ai',
+        aiText,
+        { incomplete: true, reason }
+      ).catch(() => {});
+    }
+  }
+
+  /**
    * Connects to Gemini Live session for this call.
    */
   public async connect(): Promise<void> {
-    if (this.liveSession || this.isConnecting) return;
-    this.isConnecting = true;
+    if (this.liveSession || this.isConnecting || this.session.ended) return;
 
     const liveModel = process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live';
+
+    // Validate contractor configuration before initializing AI session
+    const configValidation = validateContractorConfiguration(this.session.businessConfig);
+    if (!configValidation.valid || !configValidation.config) {
+      const errMsg = configValidation.reason || 'Invalid contractor configuration';
+      CallSessionManager.getInstance().markSessionFailure(this.session.streamSid, errMsg);
+      await ContractorPersistenceService.persistCallStatusUpdate(
+        this.session.businessId,
+        this.session.callSid,
+        {
+          callStatus: 'failed',
+          errorCode: 'INVALID_CONTRACTOR_CONFIGURATION',
+          errorMessage: errMsg,
+          callerPhone: this.session.callerPhone,
+          calledPhone: this.session.calledPhone,
+        }
+      ).catch(() => {});
+      if (this.twilioWs.readyState === WebSocket.OPEN) {
+        try {
+          this.twilioWs.close(1011, 'Invalid contractor configuration');
+        } catch {}
+      }
+      throw new Error(errMsg);
+    }
+
+    if (
+      process.env.SKIP_GEMINI_LIVE_IN_TESTS === 'true' &&
+      process.env.FORCE_GEMINI_INIT_FAILURE !== 'true'
+    ) {
+      await ContractorPersistenceService.recordCallLifecycleEvent(
+        this.session.businessId,
+        this.session.callSid,
+        'ai_session_initialized',
+        {
+          streamSid: this.session.streamSid,
+          model: liveModel,
+          testMode: true,
+        }
+      ).catch(() => {});
+      return;
+    }
+
+    this.isConnecting = true;
+
     const callerIdNote = this.session.callerPhone
       ? `\n[System Note: The incoming caller's phone number from caller ID is ${this.session.callerPhone}. You may politely confirm if this is the best callback number if needed.]`
-      : '';
+      : `\n[System Note: Caller ID was not provided or is anonymous. Politely ask the caller for their best callback phone number during the conversation.]`;
 
-    const dynamicInstruction = buildReceptionistSystemInstruction(this.session.businessConfig) + callerIdNote;
-    const dynamicTools = buildReceptionistTools(this.session.businessConfig);
+    const dynamicInstruction =
+      buildReceptionistSystemInstruction(configValidation.config) + callerIdNote;
+    const dynamicTools = buildReceptionistTools(configValidation.config);
 
     try {
+      if (process.env.FORCE_GEMINI_INIT_FAILURE === 'true') {
+        throw new Error('Gemini Live session initialization failed');
+      }
+
       console.log(
         `[GeminiTelephonyBridge] Connecting call ${this.session.sessionId} (tenant: ${this.session.businessConfig.name}) to ${liveModel}...`
       );
@@ -86,24 +165,48 @@ export class GeminiTelephonyBridge {
               correlationId: this.session.sessionId,
               details: { streamSid: this.session.streamSid },
             });
+            ContractorPersistenceService.recordCallLifecycleEvent(
+              this.session.businessId,
+              this.session.callSid,
+              'ai_session_initialized',
+              {
+                streamSid: this.session.streamSid,
+                model: liveModel,
+              }
+            ).catch(() => {});
           },
           onmessage: (msg: any) => {
             this.handleGeminiServerMessage(msg);
           },
           onerror: (err: any) => {
+            const errMsg = err instanceof Error ? err.message : String(err);
             console.error(`[GeminiTelephonyBridge] Live error for ${this.session.sessionId}:`, err);
+            this.flushPendingTranscripts('gemini_live_error');
             logDiagnosticEvent({
               event: 'CALL_ERROR',
               businessId: this.session.businessId,
               conversationId: this.session.callSid,
               correlationId: this.session.sessionId,
-              error: err instanceof Error ? err.message : String(err),
+              error: errMsg,
             });
+            CallSessionManager.getInstance().markSessionFailure(this.session.streamSid, errMsg);
+            ContractorPersistenceService.persistCallStatusUpdate(
+              this.session.businessId,
+              this.session.callSid,
+              {
+                callStatus: 'failed',
+                errorCode: 'GEMINI_LIVE_ERROR',
+                errorMessage: errMsg,
+                callerPhone: this.session.callerPhone,
+                calledPhone: this.session.calledPhone,
+              }
+            ).catch(() => {});
           },
           onclose: (c: any) => {
             console.log(
               `[GeminiTelephonyBridge] Live closed for ${this.session.sessionId} (code: ${c.code}, reason: "${c.reason}")`
             );
+            this.flushPendingTranscripts('gemini_live_closed');
             if (!this.session.ended) {
               CallSessionManager.getInstance().terminateSession(this.session.streamSid, 'Gemini Live closed');
             }
@@ -111,20 +214,53 @@ export class GeminiTelephonyBridge {
         },
       });
 
+      if (this.session.ended || this.twilioWs.readyState !== WebSocket.OPEN) {
+        this.isConnecting = false;
+        try {
+          session.close();
+        } catch {
+          // Ignore close error on already-terminated call
+        }
+        return;
+      }
+
       this.liveSession = session;
       this.session.geminiSession = session;
       this.isConnecting = false;
       console.log(`[GeminiTelephonyBridge] Successfully connected Gemini Live for call ${this.session.sessionId}`);
     } catch (err) {
       this.isConnecting = false;
+      const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[GeminiTelephonyBridge] Connection failure for ${this.session.sessionId}:`, err);
+      this.flushPendingTranscripts('gemini_init_failure');
       logDiagnosticEvent({
         event: 'CALL_ERROR',
         businessId: this.session.businessId,
         conversationId: this.session.callSid,
         correlationId: this.session.sessionId,
-        error: err instanceof Error ? err.message : String(err),
+        error: errMsg,
       });
+      CallSessionManager.getInstance().markSessionFailure(this.session.streamSid, errMsg);
+      await ContractorPersistenceService.persistCallStatusUpdate(
+        this.session.businessId,
+        this.session.callSid,
+        {
+          callStatus: 'failed',
+          errorCode: 'GEMINI_INIT_FAILURE',
+          errorMessage: errMsg,
+          callerPhone: this.session.callerPhone,
+          calledPhone: this.session.calledPhone,
+        }
+      ).catch(() => {});
+
+      // Close Twilio Media Stream WebSocket so Twilio immediately executes the post-<Connect> fallback TwiML
+      if (this.twilioWs.readyState === WebSocket.OPEN) {
+        try {
+          this.twilioWs.close(1011, 'AI receptionist session failed to start');
+        } catch {
+          // Ignore close errors
+        }
+      }
       throw err;
     }
   }
@@ -154,7 +290,7 @@ export class GeminiTelephonyBridge {
   /**
    * Handles incoming server messages from Gemini Live.
    */
-  private async handleGeminiServerMessage(msg: any): Promise<void> {
+  public async handleGeminiServerMessage(msg: any): Promise<void> {
     if (this.session.ended) return;
 
     // A. Handshake complete -> Trigger initial greeting once
@@ -168,6 +304,7 @@ export class GeminiTelephonyBridge {
     if (msg.serverContent?.interrupted) {
       console.log(`[GeminiTelephonyBridge] Interruption detected on ${this.session.sessionId}. Clearing Twilio audio buffer.`);
       this.session.metrics.interruptionEvents += 1;
+      this.flushPendingTranscripts('caller_interrupted');
       this.clearTwilioPlaybackBuffer();
       return;
     }
@@ -333,11 +470,25 @@ export class GeminiTelephonyBridge {
         `[GeminiTelephonyBridge] Telephony call ${this.session.sessionId} executing tool: ${call.name}`
       );
 
-      const result = await executeAgentToolAsync(call.name, call.args || {}, {
+      const rawArgs = call.args && typeof call.args === 'object' ? { ...call.args } : {};
+      const candidateTenant =
+        (typeof rawArgs.businessId === 'string' && rawArgs.businessId) ||
+        (typeof rawArgs.business_id === 'string' && rawArgs.business_id) ||
+        (typeof rawArgs.contractorId === 'string' && rawArgs.contractorId) ||
+        '';
+      if (candidateTenant) {
+        CallSessionManager.getInstance().attemptMidCallContractorSwitch(
+          this.session.streamSid,
+          candidateTenant
+        );
+      }
+
+      const result = await executeAgentToolAsync(call.name, rawArgs, {
         conversationId: this.session.callSid,
         businessConfig: this.session.businessConfig,
         businessId: this.session.businessId,
         isDemo: false,
+        channel: 'telephony',
       });
 
       CallSessionManager.getInstance().recordToolAction(this.session.streamSid, result.action);
@@ -374,9 +525,10 @@ export class GeminiTelephonyBridge {
   }
 
   /**
-   * Closes the bridge and tears down the live session.
+   * Closes the bridge and tears down the live session, flushing any pending partial transcripts.
    */
   public close(): void {
+    this.flushPendingTranscripts('bridge_closed');
     if (this.liveSession) {
       try {
         this.liveSession.close();
@@ -385,3 +537,4 @@ export class GeminiTelephonyBridge {
     }
   }
 }
+

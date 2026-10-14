@@ -103,9 +103,15 @@ export const RecentLeadsTable: React.FC<RecentLeadsTableProps> = ({ leads, isRea
                   >
                     <td className="py-3 px-4 font-semibold text-slate-900">
                       <div>
-                        <span>{lead.customerName}</span>
+                        <span>
+                          {lead.customerName || (
+                            <span className="italic font-normal text-slate-400">
+                              Name not provided
+                            </span>
+                          )}
+                        </span>
                         <span className="block text-[11px] font-normal text-slate-500">
-                          {lead.phone}
+                          {lead.phone || 'Phone not provided'}
                         </span>
                       </div>
                     </td>
@@ -115,7 +121,7 @@ export const RecentLeadsTable: React.FC<RecentLeadsTableProps> = ({ leads, isRea
                     <td className="py-3 px-4 text-slate-600">
                       <span className="inline-flex items-center gap-1">
                         <MapPin className="h-3 w-3 text-slate-400" />
-                        <span>{lead.city}</span>
+                        <span>{lead.city || 'Not provided'}</span>
                       </span>
                     </td>
                     <td className="py-3 px-4">

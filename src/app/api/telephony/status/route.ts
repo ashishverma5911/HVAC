@@ -18,10 +18,54 @@ export async function GET(req: NextRequest) {
   const proto = req.headers.get('x-forwarded-proto') || 'http';
   const endpoints = getTelephonyEndpoints(host, proto === 'https');
 
+  let activeCallCount = activeSessions.length;
+  const mergedRecentSessions = [...recentSessions];
+  let bridgeReachable: boolean | undefined = undefined;
+
+  // When PUBLIC_WS_BASE_URL points to the dedicated Railway telephony server,
+  // merge live call telemetry so the Vercel frontend displays real-time PSTN call status.
+  const configuredWsBase = process.env.PUBLIC_WS_BASE_URL?.trim();
+  if (configuredWsBase) {
+    try {
+      const remoteHttpBase = configuredWsBase
+        .replace(/^wss:\/\//i, 'https://')
+        .replace(/^ws:\/\//i, 'http://')
+        .replace(/\/+$/, '');
+      const remoteUrl = new URL(`${remoteHttpBase}/api/telephony/status`);
+
+      if (remoteUrl.host !== host) {
+        const remoteRes = await fetch(remoteUrl.toString(), {
+          signal: AbortSignal.timeout(2500),
+          cache: 'no-store',
+        });
+        if (remoteRes.ok) {
+          const remoteData = await remoteRes.json();
+          bridgeReachable = true;
+          if (typeof remoteData.activeCallCount === 'number') {
+            activeCallCount += remoteData.activeCallCount;
+          }
+          if (Array.isArray(remoteData.recentSessions)) {
+            const existingIds = new Set(mergedRecentSessions.map((s) => s.sessionId));
+            for (const rs of remoteData.recentSessions) {
+              if (rs && rs.sessionId && !existingIds.has(rs.sessionId)) {
+                mergedRecentSessions.push(rs);
+              }
+            }
+          }
+        } else {
+          bridgeReachable = false;
+        }
+      }
+    } catch {
+      bridgeReachable = false;
+    }
+  }
+
   return NextResponse.json({
     status: 'online',
     timestamp: Date.now(),
-    activeCallCount: activeSessions.length,
+    activeCallCount,
+    bridgeReachable,
     twilioConfigured: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
     twilioPhoneNumber: maskedTwilioNumber,
     publicHttpBaseUrl: endpoints.publicHttpBaseUrl,
@@ -31,6 +75,6 @@ export async function GET(req: NextRequest) {
     isReadyForRealTwilio: endpoints.isReadyForRealTwilio,
     missingConfig: endpoints.missingConfig,
     maxCallDurationSeconds: parseInt(process.env.MAX_CALL_DURATION_SECONDS || '300', 10),
-    recentSessions,
+    recentSessions: mergedRecentSessions,
   });
 }

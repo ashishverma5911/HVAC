@@ -56,6 +56,8 @@ export interface LiveVoiceCallbacks {
   onError?: (errorMessage: string) => void;
   onAudioLevel?: (level: number) => void; // Normalized 0.0 - 1.0
   onDiagnostics?: (diag: LiveVoiceDiagnostics) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  liveClientFactory?: (token: string) => { live: { connect: (opts: any) => Promise<any> } };
 }
 
 export class LiveVoiceManager {
@@ -292,13 +294,16 @@ export class LiveVoiceManager {
       this.emitDiagnostics();
 
       // 5. Initialize client-side GoogleGenAI using the ephemeral token (v1alpha)
-      this.aiClient = new GoogleGenAI({
-        apiKey: token,
-        httpOptions: { apiVersion: 'v1alpha' },
-      });
+      const clientInstance = this.callbacks.liveClientFactory
+        ? this.callbacks.liveClientFactory(token)
+        : new GoogleGenAI({
+            apiKey: token,
+            httpOptions: { apiVersion: 'v1alpha' },
+          });
+      this.aiClient = clientInstance as GoogleGenAI;
 
       // 6. Connect to Gemini Live API WebSocket
-      const session = await this.aiClient.live.connect({
+      const session = await clientInstance.live.connect({
         model: model || 'gemini-3.8-live',
         callbacks: {
           onopen: () => {
@@ -311,16 +316,41 @@ export class LiveVoiceManager {
           },
           onerror: (err: any) => {
             console.error('[Live Voice Diagnostics] WebSocket error:', err);
+            this.finalizeAiTurn();
+            this.finalizeUserTurn();
+            this.cleanup();
             this.diagnostics.liveSession = 'failed';
             this.emitDiagnostics();
-            this.callbacks.onError?.('Live voice connection error occurred.');
             this.setState('ERROR');
+            this.callbacks.onError?.('Live voice connection error occurred.');
           },
           onclose: (ev: any) => {
-            console.log('[Live Voice Diagnostics] Connection closed:', ev.code, ev.reason);
+            console.log('[Live Voice Diagnostics] Connection closed:', ev?.code, ev?.reason);
+            if (this.state === 'ERROR') {
+              this.cleanup();
+              this.diagnostics.liveSession = 'failed';
+              this.emitDiagnostics();
+              return;
+            }
+            const isAbnormalClose =
+              typeof ev?.code === 'number' && ev.code !== 1000 && ev.code !== 1005;
+            if (isAbnormalClose && this.state !== 'ENDED' && this.state !== 'IDLE') {
+              this.finalizeAiTurn();
+              this.finalizeUserTurn();
+              this.cleanup();
+              this.diagnostics.liveSession = 'failed';
+              this.emitDiagnostics();
+              this.setState('ERROR');
+              this.callbacks.onError?.(
+                `Live voice connection disconnected unexpectedly (code ${ev.code}${
+                  ev.reason ? `: ${ev.reason}` : ''
+                }).`
+              );
+              return;
+            }
             this.diagnostics.liveSession = 'disconnected';
             this.emitDiagnostics();
-            if (this.state !== 'ENDED') {
+            if (this.state !== 'ENDED' && this.state !== 'IDLE') {
               this.stop();
             }
           },

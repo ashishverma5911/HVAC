@@ -69,7 +69,15 @@ interface MockDbLead {
   service_type: string;
   reported_issue: string;
   urgency: 'normal' | 'urgent' | 'emergency';
-  status: 'new' | 'qualified' | 'appointment_requested' | 'transferred' | 'completed';
+  status:
+    | 'new'
+    | 'contacted'
+    | 'qualified'
+    | 'appointment_requested'
+    | 'transferred'
+    | 'converted'
+    | 'completed'
+    | 'closed_not_proceeding';
   source: 'web_chat' | 'web_voice' | 'telephony';
   created_at: string;
 }
@@ -102,7 +110,7 @@ class SimulatedMultiTenantDatabase {
 
     // Idempotency check: matching phone and serviceType in this business
     const existing = this.leads.find(
-      (l) => l.business_id === businessId && l.phone === params.phone && l.service_type === params.serviceType
+      (l) => l.business_id === businessId && l.phone === (params.phone || '') && l.service_type === (params.serviceType || 'General HVAC Inquiry')
     );
 
     if (existing) {
@@ -114,12 +122,12 @@ class SimulatedMultiTenantDatabase {
       id: leadId,
       business_id: businessId,
       conversation_id: params.conversationId ? normalizeToUuid(params.conversationId) : null,
-      customer_name: params.customerName,
-      phone: params.phone,
-      service_address: params.serviceAddress,
+      customer_name: params.customerName || '',
+      phone: params.phone || '',
+      service_address: params.serviceAddress || '',
       city_area: params.cityArea || null,
-      service_type: params.serviceType,
-      reported_issue: params.reportedIssue,
+      service_type: params.serviceType || 'General HVAC Inquiry',
+      reported_issue: params.reportedIssue || '',
       urgency: params.urgency || 'normal',
       status: params.status || 'qualified',
       source: params.source || 'web_chat',

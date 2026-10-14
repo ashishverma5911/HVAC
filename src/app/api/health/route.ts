@@ -26,8 +26,14 @@ export async function GET() {
           status: envStatus.services.supabase.status,
           urlConfigured: envStatus.services.supabase.urlConfigured,
         },
+        telephony: {
+          status: envStatus.services.telephony.status,
+          twilioConfigured: envStatus.services.telephony.twilioConfigured,
+          publicWsConfigured: envStatus.services.telephony.publicWsConfigured,
+        },
       },
       readyForPilot: envStatus.healthy,
+      readyForLivePstn: envStatus.readyForLivePstn,
     };
 
     return NextResponse.json(responsePayload, {

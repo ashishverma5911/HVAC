@@ -7,8 +7,10 @@ import { Navbar } from '@/components/landing/Navbar';
 import { Footer } from '@/components/landing/Footer';
 import { MetricCards } from '@/components/dashboard/MetricCards';
 import { RecentLeadsTable } from '@/components/dashboard/RecentLeadsTable';
+import { CallHistoryTable } from '@/components/dashboard/CallHistoryTable';
 import { mockDashboardMetrics, mockRecentLeads } from '@/mock/dashboardData';
 import { DashboardLead, DashboardMetrics } from '@/types';
+import type { ContractorCallHistoryItem } from '@/lib/services/contractorPersistence';
 import { ArrowLeft, LogOut, CheckCircle2, Loader2, PhoneCall, AlertCircle, RefreshCw } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -30,6 +32,7 @@ export default function DashboardPage() {
     urgentRequests: 0,
   });
   const [leads, setLeads] = useState<DashboardLead[]>([]);
+  const [calls, setCalls] = useState<ContractorCallHistoryItem[]>([]);
 
   const loadDashboard = useCallback(async () => {
     setLoadingData(true);
@@ -40,7 +43,7 @@ export default function DashboardPage() {
       setAuthStatus(authData);
 
       if (authData.authenticated && authData.hasBusiness) {
-        // Fetch real database metrics and recent leads
+        // Fetch real database metrics, recent leads, and recent calls
         const dashRes = await fetch('/api/contractor/dashboard');
         if (!dashRes.ok) {
           throw new Error(`Failed to load contractor data (status ${dashRes.status})`);
@@ -57,26 +60,28 @@ export default function DashboardPage() {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const mappedLeads: DashboardLead[] = (dashData.recentLeads || []).map((l: any) => ({
             id: l.id,
-            customerName: l.customer_name,
-            service: l.service_type,
-            city: l.city_area || l.service_address || 'Service Area',
+            customerName: l.customer_name || '',
+            service: l.service_type || 'HVAC Service',
+            city: l.city_area || l.service_address || '',
             urgency: l.urgency,
             status: l.status,
             timeReceived: new Date(l.created_at).toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit',
             }),
-            phone: l.phone,
-            notes: l.reported_issue,
+            phone: l.phone || '',
+            notes: l.reported_issue || '',
           }));
           setLeads(mappedLeads);
+          setCalls(Array.isArray(dashData.recentCalls) ? dashData.recentCalls : []);
         } else {
           throw new Error(dashData.error || 'Failed to parse dashboard data');
         }
       } else {
-        // Unauthenticated demo preview mode
+        // Unauthenticated demo preview mode (never fabricate call history for authenticated contractors)
         setMetrics(mockDashboardMetrics);
         setLeads(mockRecentLeads);
+        setCalls([]);
       }
     } catch (err: unknown) {
       console.error('Failed to load dashboard data:', err);
@@ -238,6 +243,13 @@ export default function DashboardPage() {
                 /* Recent Leads Table */
                 <RecentLeadsTable leads={leads} isRealContractor={Boolean(isRealContractor)} />
               )}
+
+              {/* Inbound Call History, Transcripts, Lifecycle Audit Trail, and Privacy Safeguards */}
+              <CallHistoryTable
+                calls={calls}
+                isRealContractor={Boolean(isRealContractor)}
+                onRefresh={loadDashboard}
+              />
             </>
           )}
         </div>

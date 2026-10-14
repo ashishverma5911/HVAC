@@ -1,4 +1,4 @@
-import { sanitizeLogPayload } from './piiMask';
+import { sanitizeLogPayload, scrubStringSecrets } from './piiMask';
 
 export type DiagnosticEventType =
   | 'REQUEST_START'
@@ -34,6 +34,7 @@ export interface DiagnosticEventParams {
 export function logDiagnosticEvent(params: DiagnosticEventParams): void {
   const timestamp = new Date().toISOString();
   const safeDetails = params.details ? sanitizeLogPayload(params.details) : undefined;
+  const safeError = params.error ? scrubStringSecrets(params.error) : undefined;
 
   const logEntry = {
     timestamp,
@@ -44,10 +45,10 @@ export function logDiagnosticEvent(params: DiagnosticEventParams): void {
     durationMs: params.durationMs,
     status: params.status,
     details: safeDetails,
-    error: params.error,
+    error: safeError,
   };
 
-  if (params.error || (params.status && params.status >= 500)) {
+  if (safeError || (params.status && params.status >= 500)) {
     console.error(`[DIAGNOSTIC:${params.event}]`, JSON.stringify(logEntry));
   } else {
     console.log(`[DIAGNOSTIC:${params.event}]`, JSON.stringify(logEntry));

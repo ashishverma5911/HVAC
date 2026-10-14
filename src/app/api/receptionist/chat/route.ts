@@ -9,11 +9,12 @@ import {
 import { buildReceptionistSystemInstruction } from '@/lib/ai/receptionistPrompt';
 import { buildReceptionistTools } from '@/lib/ai/tools';
 import { executeAgentToolAsync } from '@/lib/ai/toolExecutor';
-import { resolveTenantContext } from '@/lib/auth/tenant';
+import { resolveTenantContext, stripUntrustedTenantIds } from '@/lib/auth/tenant';
+import { demoLimiter } from '@/lib/security/demoLimiter';
+import { logDiagnosticEvent } from '@/lib/diagnostics/logger';
 import { ContractorPersistenceService } from '@/lib/services/contractorPersistence';
 import { mockStore, resolveAppointmentSlot } from '@/lib/mock/store';
 import {
-  validateIntent,
   inferIntent,
   calculateLeadStatus,
   mergeCustomerInfo,
@@ -49,9 +50,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let body: ChatApiRequest;
+    let rawBody: Record<string, unknown>;
     try {
-      body = await req.json();
+      rawBody = await req.json();
     } catch {
       return NextResponse.json(
         { error: 'Invalid request body. Expected valid JSON.' },
@@ -59,6 +60,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // SAFEGUARD: Never trust client-supplied tenant IDs or contractor config overrides
+    const body = stripUntrustedTenantIds(rawBody) as unknown as ChatApiRequest;
     const { messages, currentData, conversationId: reqConvId, leadId: reqLeadId } = body;
 
     // 1. Validation
@@ -83,6 +86,28 @@ export async function POST(req: NextRequest) {
     }
 
     const conversationId = reqConvId || 'default-session';
+
+    // Demo abuse limiter: cap turns per anonymous demo conversation
+    if (tenant.isDemo) {
+      const turnCheck = demoLimiter.recordTurn(conversationId);
+      if (!turnCheck.allowed) {
+        logDiagnosticEvent({
+          event: 'DEMO_RATE_LIMIT_TRIGGERED',
+          conversationId,
+          isDemo: true,
+          details: { turns: turnCheck.turns, endpoint: 'chat' },
+          error: turnCheck.reason,
+        });
+        return NextResponse.json(
+          { error: turnCheck.reason, category: 'DEMO_LIMIT_EXCEEDED' },
+          { status: 429 }
+        );
+      }
+    }
+
+    // Validate AI client configuration before mutating session state or executing pre-LLM tools
+    const ai = getGeminiClient();
+
     const session = mockStore.getSession(conversationId);
     if (reqLeadId && !session.leadId) {
       session.leadId = reqLeadId;
@@ -114,7 +139,7 @@ export async function POST(req: NextRequest) {
     const candidateCity =
       extractFallbackCity(allUserUtterances) ||
       currentData?.city ||
-      (currentData as any)?.cityOrArea ||
+      currentData?.cityOrArea ||
       null;
 
     const candidateServiceType =
@@ -140,6 +165,7 @@ export async function POST(req: NextRequest) {
         businessConfig: tenant.config,
         businessId: tenant.businessId,
         isDemo: tenant.isDemo,
+        channel: 'web_chat',
       });
       const existingIdx = executedActions.findIndex((a) => a.toolName === toolName);
       if (existingIdx >= 0) {
@@ -247,7 +273,6 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Multi-turn Gemini Tool Calling Loop
-    const ai = getGeminiClient();
     const primaryModel = getGeminiModel();
     const candidateModels = [
       primaryModel,
@@ -270,12 +295,11 @@ export async function POST(req: NextRequest) {
     }
 
     let finalReply = '';
-    let finalError: unknown;
-
     modelLoop: for (const candidateModel of candidateModels) {
       const MAX_RETRIES = 1;
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           let currentContents: Array<{ role: 'user' | 'model'; parts: any[] }> =
             normalizedTurns.map((m) => ({
               role: m.role,
@@ -287,6 +311,7 @@ export async function POST(req: NextRequest) {
 
           toolLoop: while (loopCount < MAX_TOOL_LOOPS) {
             loopCount++;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const genResponse: any = await ai.models.generateContent({
               model: candidateModel,
               contents: currentContents,
@@ -299,6 +324,7 @@ export async function POST(req: NextRequest) {
             const functionCalls = genResponse.functionCalls || [];
 
             if (functionCalls.length > 0) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const toolResponseParts: any[] = [];
 
               for (const fc of functionCalls) {
@@ -346,6 +372,7 @@ export async function POST(req: NextRequest) {
                   parts:
                     candidateParts.length > 0
                       ? candidateParts
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       : functionCalls.map((fc: any) => ({
                           functionCall: { name: fc.name, args: fc.args, id: fc.id },
                         })),
@@ -366,7 +393,6 @@ export async function POST(req: NextRequest) {
 
           break modelLoop; // Succeeded!
         } catch (err: unknown) {
-          finalError = err;
           const classification = classifyGeminiError(err);
 
           console.warn(
@@ -417,9 +443,23 @@ export async function POST(req: NextRequest) {
       finalReply = finalReply.replace(/\$\s*\d+(?:\.\d{2})?/g, '[pricing upon on-site inspection]');
     }
 
+    // Never claim an appointment is booked or confirmed unless request_appointment actually succeeded
+    if (!session.appointmentId && /\b(?:appointment is (?:now )?(?:booked|confirmed)|officially booked|has been booked)\b/i.test(finalReply)) {
+      console.warn('[Receptionist API] Scrubbing unverified appointment booking claim from finalReply');
+      finalReply = finalReply.replace(
+        /\b(?:your )?appointment is (?:now )?(?:booked|confirmed)\b/gi,
+        'we can submit an appointment request once we verify your service details and preferred time window'
+      );
+    } else if (session.appointmentId && /\bappointment is (?:now )?confirmed\b/i.test(finalReply)) {
+      finalReply = finalReply.replace(
+        /\bappointment is (?:now )?confirmed\b/gi,
+        'appointment request has been recorded and our dispatch team will follow up to confirm'
+      );
+    }
+
     const isRepeatedGreeting =
       messages.length > 1 &&
-      /^(?:Hi|Hello|Thank you for reaching out to Summit HVAC|Thanks for contacting)/i.test(finalReply);
+      /^(?:Hi|Hello|Thank you for reaching out to|Thanks for contacting)/i.test(finalReply);
 
     if (session.transferId && (isTransferRequest || !finalReply || isRepeatedGreeting)) {
       finalReply =
@@ -427,18 +467,18 @@ export async function POST(req: NextRequest) {
     } else if (!finalReply || isRepeatedGreeting) {
       if (session.appointmentId) {
         const apt = mockStore.getAppointment(session.appointmentId);
-        finalReply = `I have submitted your appointment request for ${apt?.slot || 'your selected window'}. Our dispatch team will review the schedule and contact you shortly to confirm the appointment.`;
+        finalReply = `I have submitted your appointment request for ${apt?.slot || candidateAppt || 'your selected window'}. Our dispatch team will review the schedule and contact you shortly to confirm the appointment.`;
       } else if (session.slotsChecked) {
         finalReply = `We have technician appointment windows available on Monday at 10:00 AM, 2:00 PM, and 4:00 PM; Tuesday at 9:00 AM, 1:00 PM, and 3:00 PM; or Wednesday at 11:00 AM and 2:00 PM. Would any of those times work best for you?`;
       } else if (session.leadId) {
         const lead = mockStore.getLead(session.leadId);
-        finalReply = `Thank you, ${lead?.customerName || 'Alex'}. I have recorded your service request for your ${lead?.serviceType || 'AC'} at ${lead?.serviceAddress || 'your address'}. Would you like to check our available times to schedule a technician?`;
+        finalReply = `Thank you, ${lead?.customerName || candidateName || 'there'}. I have recorded your service request for your ${lead?.serviceType || candidateServiceType || 'HVAC system'} at ${lead?.serviceAddress || candidateStreet || 'your address'}. Would you like to check our available times to schedule a technician?`;
       } else if (messages.length > 2) {
         finalReply =
           'I have recorded your details. How else can I assist you with your heating or cooling system today?';
       } else {
         finalReply =
-          'Thank you for reaching out to Summit HVAC. How can I assist you with your heating or cooling system today?';
+          `Thank you for reaching out to ${tenant.config.name}. How can I assist you with your heating or cooling system today?`;
       }
     }
 
@@ -485,8 +525,8 @@ export async function POST(req: NextRequest) {
         phone: currentData?.phone || '',
         address: currentData?.serviceAddress || currentData?.address || '',
         serviceAddress: currentData?.serviceAddress || '',
-        city: currentData?.city || (currentData as any)?.cityOrArea || '',
-        cityOrArea: currentData?.city || (currentData as any)?.cityOrArea || '',
+        city: currentData?.city || currentData?.cityOrArea || '',
+        cityOrArea: currentData?.city || currentData?.cityOrArea || '',
         serviceType: currentData?.serviceType || '',
         problemDescription: currentData?.problemDescription || '',
         urgency: currentData?.urgency || 'normal',
@@ -541,6 +581,6 @@ export async function POST(req: NextRequest) {
     console.error(
       `[Gemini API] Error response sent to client: status=${status}, category=${category}`
     );
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message, category }, { status });
   }
 }

@@ -34,22 +34,38 @@ interface LeadItem {
   service_type: string;
   reported_issue: string;
   urgency: 'normal' | 'urgent' | 'emergency';
-  status: 'new' | 'qualified' | 'appointment_requested' | 'transferred' | 'completed';
+  status:
+    | 'new'
+    | 'contacted'
+    | 'qualified'
+    | 'appointment_requested'
+    | 'converted'
+    | 'closed_not_proceeding'
+    | 'transferred'
+    | 'completed';
   source: string;
+  source_call_id?: string | null;
+  preferred_appointment_window?: string | null;
+  appointment_confirmation_message?: string;
   created_at: string;
+  updated_at?: string;
   appointment?: {
     id: string;
     requested_date: string;
     requested_slot: string;
     status: string;
+    confirmation_message?: string;
   } | null;
 }
 
 const STATUS_OPTIONS = [
   { label: 'All Statuses', value: '' },
   { label: 'New', value: 'new' },
+  { label: 'Contacted', value: 'contacted' },
   { label: 'Qualified', value: 'qualified' },
   { label: 'Appointment Requested', value: 'appointment_requested' },
+  { label: 'Converted', value: 'converted' },
+  { label: 'Closed / Not Proceeding', value: 'closed_not_proceeding' },
   { label: 'Transferred', value: 'transferred' },
   { label: 'Completed', value: 'completed' },
 ];
@@ -159,6 +175,13 @@ export default function LeadsManagementPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'converted':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+            <span>Converted</span>
+          </span>
+        );
       case 'completed':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
@@ -166,11 +189,24 @@ export default function LeadsManagementPage() {
             <span>Completed</span>
           </span>
         );
+      case 'closed_not_proceeding':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-200 text-slate-700 border border-slate-300">
+            <span>Closed / Not Proceeding</span>
+          </span>
+        );
       case 'appointment_requested':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
             <Calendar className="h-3 w-3 text-blue-600" />
-            <span>Appt Requested</span>
+            <span>Appointment Requested</span>
+          </span>
+        );
+      case 'contacted':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">
+            <Phone className="h-3 w-3 text-sky-600" />
+            <span>Contacted</span>
           </span>
         );
       case 'qualified':
@@ -350,81 +386,105 @@ export default function LeadsManagementPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
-                    {leads.map((lead) => (
-                      <tr
-                        key={lead.id}
-                        className="hover:bg-slate-50/60 transition group cursor-pointer"
-                        onClick={() => router.push(`/leads/${lead.id}`)}
-                      >
-                        <td className="py-3.5 px-4 font-semibold text-slate-900">
-                          <Link
-                            href={`/leads/${lead.id}`}
-                            className="hover:text-blue-600 transition"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {lead.customer_name}
-                          </Link>
-                          {lead.reported_issue && (
-                            <p className="text-[11px] text-slate-500 font-normal line-clamp-1 mt-0.5">
-                              {lead.reported_issue}
-                            </p>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 font-mono text-slate-700 whitespace-nowrap">
-                          <a
-                            href={`tel:${lead.phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="hover:text-blue-600 transition"
-                          >
-                            {lead.phone}
-                          </a>
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-800 font-medium whitespace-nowrap">
-                          {lead.service_type}
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
-                          {lead.city_area || 'Service Area'}
-                        </td>
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          {getUrgencyBadge(lead.urgency)}
-                        </td>
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          {getStatusBadge(lead.status)}
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-500 whitespace-nowrap">
-                          {new Date(lead.created_at).toLocaleDateString([], {
-                            month: 'short',
-                            day: 'numeric',
-                          })}{' '}
-                          <span className="text-[11px] text-slate-400">
-                            {new Date(lead.created_at).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          {lead.appointment ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                              <Calendar className="h-3 w-3" />
-                              <span>{lead.appointment.requested_slot}</span>
+                    {leads.map((lead) => {
+                      const requestedSlot =
+                        lead.appointment?.requested_slot || lead.preferred_appointment_window || null;
+
+                      return (
+                        <tr
+                          key={lead.id}
+                          className="hover:bg-slate-50/60 transition group cursor-pointer"
+                          onClick={() => router.push(`/leads/${lead.id}`)}
+                        >
+                          <td className="py-3.5 px-4 font-semibold text-slate-900">
+                            <Link
+                              href={`/leads/${lead.id}`}
+                              className="hover:text-blue-600 transition"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {lead.customer_name || (
+                                <span className="italic text-slate-400 font-normal">
+                                  Name not provided
+                                </span>
+                              )}
+                            </Link>
+                            {lead.reported_issue && (
+                              <p className="text-[11px] text-slate-500 font-normal line-clamp-1 mt-0.5">
+                                {lead.reported_issue}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-slate-700 whitespace-nowrap">
+                            {lead.phone ? (
+                              <a
+                                href={`tel:${lead.phone}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="hover:text-blue-600 transition"
+                              >
+                                {lead.phone}
+                              </a>
+                            ) : (
+                              <span className="text-[11px] italic text-slate-400 font-sans">
+                                Not provided
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-800 font-medium whitespace-nowrap">
+                            {lead.service_type || 'HVAC Service'}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
+                            {lead.city_area || lead.service_address || (
+                              <span className="text-[11px] italic text-slate-400">
+                                Not provided
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            {getUrgencyBadge(lead.urgency)}
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            {getStatusBadge(lead.status)}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-500 whitespace-nowrap">
+                            {new Date(lead.created_at).toLocaleDateString([], {
+                              month: 'short',
+                              day: 'numeric',
+                            })}{' '}
+                            <span className="text-[11px] text-slate-400">
+                              {new Date(lead.created_at).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
                             </span>
-                          ) : (
-                            <span className="text-slate-400 text-[11px]">None</span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                          <Link
-                            href={`/leads/${lead.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 transition"
-                          >
-                            <span>View</span>
-                            <ArrowRight className="h-3 w-3" />
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            {requestedSlot ? (
+                              <div className="space-y-0.5">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                                  <Calendar className="h-3 w-3" />
+                                  <span>{requestedSlot}</span>
+                                </span>
+                                <p className="text-[10px] text-amber-700 font-medium">
+                                  Appointment requested — contractor confirmation required.
+                                </p>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">None</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <Link
+                              href={`/leads/${lead.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 transition"
+                            >
+                              <span>View</span>
+                              <ArrowRight className="h-3 w-3" />
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

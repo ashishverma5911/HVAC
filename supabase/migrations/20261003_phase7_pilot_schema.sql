@@ -126,8 +126,8 @@ CREATE INDEX IF NOT EXISTS idx_conversations_business_id ON public.conversations
 CREATE INDEX IF NOT EXISTS idx_conversation_messages_convo ON public.conversation_messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_call_events_business_id ON public.call_events(business_id);
 
--- 11. HELPER FUNCTION TO RESOLVE AUTHENTICATED USER'S BUSINESS_ID
--- Resolves ownership from auth.uid() rather than trusting client-supplied business_id.
+-- 11. HELPER FUNCTIONS TO RESOLVE AUTHENTICATED USER'S BUSINESS & ROLE
+-- Resolves ownership and role strictly from auth.uid() rather than trusting client input.
 CREATE OR REPLACE FUNCTION public.get_auth_business_id()
 RETURNS UUID
 LANGUAGE sql
@@ -136,6 +136,16 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   SELECT business_id FROM public.users WHERE id = auth.uid() LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_auth_user_role()
+RETURNS TEXT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT role FROM public.users WHERE id = auth.uid() LIMIT 1;
 $$;
 
 -- 12. REVOKE PUBLIC & ANONYMOUS GRANTS (DEFENSE IN DEPTH)
@@ -150,7 +160,13 @@ REVOKE ALL ON TABLE public.call_events FROM anon, public;
 
 -- Grant minimal necessary rights to authenticated users
 GRANT SELECT, UPDATE ON TABLE public.businesses TO authenticated;
-GRANT SELECT, UPDATE ON TABLE public.users TO authenticated;
+
+-- Hardened column-level grant: Users can only update their own non-sensitive profile fields.
+-- Explicitly revoke broad table-level UPDATE before granting column-level UPDATE.
+REVOKE UPDATE ON TABLE public.users FROM authenticated;
+GRANT SELECT ON TABLE public.users TO authenticated;
+GRANT UPDATE (full_name, updated_at) ON TABLE public.users TO authenticated;
+
 GRANT SELECT, INSERT, UPDATE ON TABLE public.business_settings TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.leads TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.appointments TO authenticated;
@@ -175,8 +191,14 @@ CREATE POLICY "users_select_own_business" ON public.businesses
 
 CREATE POLICY "owners_update_own_business" ON public.businesses
     FOR UPDATE TO authenticated
-    USING (id = public.get_auth_business_id())
-    WITH CHECK (id = public.get_auth_business_id());
+    USING (
+        id = public.get_auth_business_id()
+        AND public.get_auth_user_role() = 'owner'
+    )
+    WITH CHECK (
+        id = public.get_auth_business_id()
+        AND public.get_auth_user_role() = 'owner'
+    );
 
 -- Policy: users
 CREATE POLICY "users_select_same_business_users" ON public.users
@@ -186,7 +208,11 @@ CREATE POLICY "users_select_same_business_users" ON public.users
 CREATE POLICY "users_update_own_profile" ON public.users
     FOR UPDATE TO authenticated
     USING (id = auth.uid())
-    WITH CHECK (id = auth.uid());
+    WITH CHECK (
+        id = auth.uid()
+        AND business_id = public.get_auth_business_id()
+        AND role = public.get_auth_user_role()
+    );
 
 -- Policy: business_settings
 CREATE POLICY "users_select_own_settings" ON public.business_settings
@@ -195,8 +221,14 @@ CREATE POLICY "users_select_own_settings" ON public.business_settings
 
 CREATE POLICY "owners_manage_own_settings" ON public.business_settings
     FOR ALL TO authenticated
-    USING (business_id = public.get_auth_business_id())
-    WITH CHECK (business_id = public.get_auth_business_id());
+    USING (
+        business_id = public.get_auth_business_id()
+        AND public.get_auth_user_role() = 'owner'
+    )
+    WITH CHECK (
+        business_id = public.get_auth_business_id()
+        AND public.get_auth_user_role() = 'owner'
+    );
 
 -- Policy: leads
 CREATE POLICY "users_select_own_leads" ON public.leads
@@ -252,6 +284,10 @@ CREATE POLICY "users_insert_own_messages" ON public.conversation_messages
 CREATE POLICY "users_select_own_call_events" ON public.call_events
     FOR SELECT TO authenticated
     USING (business_id = public.get_auth_business_id());
+
+CREATE POLICY "users_insert_own_call_events" ON public.call_events
+    FOR INSERT TO authenticated
+    WITH CHECK (business_id = public.get_auth_business_id());
 
 -- 14. SEED DEMO BUSINESS (SUMMIT HVAC)
 -- Deterministic seed for demo/reference mode.

@@ -1,9 +1,12 @@
 export type LeadStatus =
   | 'new'
+  | 'contacted'
   | 'qualified'
   | 'appointment_requested'
   | 'transferred'
-  | 'completed';
+  | 'converted'
+  | 'completed'
+  | 'closed_not_proceeding';
 
 export type UrgencyLevel = 'normal' | 'urgent' | 'emergency';
 

@@ -1,12 +1,31 @@
-import { isValidPhoneNumber } from './contractorOnboarding';
+import {
+  isValidPhoneNumber,
+  isValidEmailAddress,
+  isValidWebsiteUrl,
+  OnboardingForwardingMode,
+} from './contractorOnboarding';
+import { ContractorIndustry } from '@/lib/supabase/types';
+import { SUPPORTED_INDUSTRIES, normalizeIndustry } from '@/lib/ai/industryTemplates';
+import {
+  AfterHoursBehavior,
+  ContractorFaqItem,
+  PhoneIntegrationStatus,
+  SupportedVoiceLanguage,
+  SUPPORTED_VOICE_LANGUAGES,
+} from '@/lib/ai/contractorConfig';
+import { stripUntrustedTenantIds } from './tenantSanitizer';
 
 export interface ContractorSettingsInput {
   name: string;
+  industry?: ContractorIndustry;
   phone: string;
+  businessEmail?: string;
+  website?: string;
   address?: string;
   city?: string;
   state?: string;
   postalCode?: string;
+  timezone?: string;
   serviceAreas: string[];
   supportedZips?: string[];
   servicesOffered: string[];
@@ -16,10 +35,24 @@ export interface ContractorSettingsInput {
     sunday?: string;
   };
   emergencyServiceEnabled: boolean;
+  afterHoursBehavior?: AfterHoursBehavior;
   afterHoursInstructions?: string;
+  callbackInstructions?: string;
+  appointmentRequestRules?: string;
   transferPhoneNumber?: string;
   transferInstructions?: string;
   customGreeting?: string;
+  pronunciationGuide?: string;
+  conversationPreferences?: string;
+  supportedLanguages?: SupportedVoiceLanguage[];
+  callerIntakeQuestions?: string[];
+  businessFaqs?: ContractorFaqItem[];
+  forwardingEnabled?: boolean;
+  forwardingMode?: OnboardingForwardingMode;
+  carrierName?: string;
+  phoneSetupStatus?: PhoneIntegrationStatus;
+  onboardingStep?: number;
+  onboardingCompleted?: boolean;
 }
 
 export interface SettingsValidationResult {
@@ -27,6 +60,13 @@ export interface SettingsValidationResult {
   errors: Record<string, string>;
   sanitized?: ContractorSettingsInput;
 }
+
+const VALID_VOICE_LANGUAGE_CODES = SUPPORTED_VOICE_LANGUAGES.map((l) => l.code);
+const VALID_AFTER_HOURS_BEHAVIORS: AfterHoursBehavior[] = [
+  'emergency_dispatch',
+  'next_day_callback',
+  'live_transfer',
+];
 
 /**
  * Validates contractor business settings payload.
@@ -42,7 +82,7 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
     };
   }
 
-  const data = input as Record<string, unknown>;
+  const data = stripUntrustedTenantIds(input as Record<string, unknown>);
 
   // 1. Business Name
   const name = typeof data.name === 'string' ? data.name.trim() : '';
@@ -54,6 +94,24 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
   const phone = typeof data.phone === 'string' ? data.phone.trim() : '';
   if (!phone || !isValidPhoneNumber(phone)) {
     errors.phone = 'A valid 10-digit business phone number is required (e.g., (214) 555-0100).';
+  }
+
+  // 2b. Optional Business Email
+  const businessEmail =
+    typeof data.businessEmail === 'string' && data.businessEmail.trim().length > 0
+      ? data.businessEmail.trim()
+      : undefined;
+  if (businessEmail && !isValidEmailAddress(businessEmail)) {
+    errors.businessEmail = 'Please enter a valid business email address.';
+  }
+
+  // 2c. Optional Website
+  const website =
+    typeof data.website === 'string' && data.website.trim().length > 0
+      ? data.website.trim()
+      : undefined;
+  if (website && !isValidWebsiteUrl(website)) {
+    errors.website = 'Please enter a valid website URL (e.g., https://yourcompany.com).';
   }
 
   // 3. Address
@@ -74,8 +132,12 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
     errors.state = 'State must be a 2-letter postal abbreviation (e.g. TX, CA).';
   }
 
-  // 6. Postal Code (optional)
+  // 6. Postal Code & Timezone (optional)
   const postalCode = typeof data.postalCode === 'string' ? data.postalCode.trim() : undefined;
+  const timezone =
+    typeof data.timezone === 'string' && data.timezone.trim().length > 0
+      ? data.timezone.trim()
+      : undefined;
 
   // 7. Service Areas (at least 1 required)
   const rawServiceAreas = Array.isArray(data.serviceAreas) ? data.serviceAreas : [];
@@ -111,8 +173,14 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
 
   const businessHours = {
     weekdays: typeof rawHours?.weekdays === 'string' ? rawHours.weekdays.trim() : '',
-    saturday: typeof rawHours?.saturday === 'string' && rawHours.saturday.trim().length > 0 ? rawHours.saturday.trim() : undefined,
-    sunday: typeof rawHours?.sunday === 'string' && rawHours.sunday.trim().length > 0 ? rawHours.sunday.trim() : undefined,
+    saturday:
+      typeof rawHours?.saturday === 'string' && rawHours.saturday.trim().length > 0
+        ? rawHours.saturday.trim()
+        : undefined,
+    sunday:
+      typeof rawHours?.sunday === 'string' && rawHours.sunday.trim().length > 0
+        ? rawHours.sunday.trim()
+        : undefined,
   };
 
   // 11. Emergency Service Enabled
@@ -130,7 +198,7 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
     errors.transferPhoneNumber = 'Human transfer phone must be a valid 10-digit phone number.';
   }
 
-  // 13. Text Fields
+  // 13. Text & Receptionist Behavior Fields
   const afterHoursInstructions =
     typeof data.afterHoursInstructions === 'string' && data.afterHoursInstructions.trim().length > 0
       ? data.afterHoursInstructions.trim()
@@ -146,6 +214,109 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
       ? data.customGreeting.trim()
       : undefined;
 
+  const pronunciationGuide =
+    typeof data.pronunciationGuide === 'string' && data.pronunciationGuide.trim().length > 0
+      ? data.pronunciationGuide.trim()
+      : undefined;
+
+  const callbackInstructions =
+    typeof data.callbackInstructions === 'string' && data.callbackInstructions.trim().length > 0
+      ? data.callbackInstructions.trim()
+      : undefined;
+
+  const appointmentRequestRules =
+    typeof data.appointmentRequestRules === 'string' && data.appointmentRequestRules.trim().length > 0
+      ? data.appointmentRequestRules.trim()
+      : undefined;
+
+  const conversationPreferences =
+    typeof data.conversationPreferences === 'string' && data.conversationPreferences.trim().length > 0
+      ? data.conversationPreferences.trim()
+      : undefined;
+
+  let businessFaqs: ContractorFaqItem[] | undefined = undefined;
+  if (Array.isArray(data.businessFaqs)) {
+    businessFaqs = data.businessFaqs
+      .filter(
+        (item): item is Record<string, unknown> =>
+          Boolean(item) &&
+          typeof item === 'object' &&
+          typeof (item as Record<string, unknown>).question === 'string' &&
+          typeof (item as Record<string, unknown>).answer === 'string' &&
+          ((item as Record<string, unknown>).question as string).trim().length > 0 &&
+          ((item as Record<string, unknown>).answer as string).trim().length > 0
+      )
+      .map((item) => ({
+        question: (item.question as string).trim(),
+        answer: (item.answer as string).trim(),
+      }));
+  }
+
+  let afterHoursBehavior: AfterHoursBehavior | undefined = undefined;
+  if (
+    typeof data.afterHoursBehavior === 'string' &&
+    data.afterHoursBehavior.trim().length > 0
+  ) {
+    const rawBehavior = data.afterHoursBehavior.trim() as AfterHoursBehavior;
+    if (!VALID_AFTER_HOURS_BEHAVIORS.includes(rawBehavior)) {
+      errors.afterHoursBehavior = `Unsupported after-hours behavior. Supported values: ${VALID_AFTER_HOURS_BEHAVIORS.join(', ')}.`;
+    } else {
+      afterHoursBehavior = rawBehavior;
+    }
+  }
+
+  let supportedLanguages: SupportedVoiceLanguage[] | undefined = undefined;
+  if (data.supportedLanguages !== undefined) {
+    if (!Array.isArray(data.supportedLanguages) || data.supportedLanguages.length === 0) {
+      errors.supportedLanguages = 'At least one supported voice language (en-US) is required.';
+    } else {
+      const invalidLangs = data.supportedLanguages.filter(
+        (l) => !(VALID_VOICE_LANGUAGE_CODES as string[]).includes(String(l))
+      );
+      if (invalidLangs.length > 0) {
+        errors.supportedLanguages = `Unsupported voice language(s): ${invalidLangs.join(', ')}. Supported: ${VALID_VOICE_LANGUAGE_CODES.join(', ')}.`;
+      } else {
+        supportedLanguages = data.supportedLanguages.map((l) => String(l) as SupportedVoiceLanguage);
+      }
+    }
+  }
+
+  let callerIntakeQuestions: string[] | undefined = undefined;
+  if (Array.isArray(data.callerIntakeQuestions)) {
+    callerIntakeQuestions = data.callerIntakeQuestions
+      .filter((q): q is string => typeof q === 'string' && q.trim().length > 0)
+      .map((q) => q.trim());
+  }
+
+  const forwardingEnabled =
+    typeof data.forwardingEnabled === 'boolean' ? data.forwardingEnabled : undefined;
+  const forwardingMode =
+    typeof data.forwardingMode === 'string' &&
+    [
+      'unconditional',
+      'busy_no_answer',
+      'manual',
+      'conditional_busy_no_answer',
+      'unconditional_all_calls',
+      'after_hours_only',
+    ].includes(data.forwardingMode)
+      ? (data.forwardingMode as OnboardingForwardingMode)
+      : undefined;
+  const carrierName =
+    typeof data.carrierName === 'string' && data.carrierName.trim().length > 0
+      ? data.carrierName.trim()
+      : undefined;
+
+  let industry: ContractorIndustry | undefined = undefined;
+  if (data.industry !== undefined && data.industry !== null && String(data.industry).trim().length > 0) {
+    const rawIndustry = String(data.industry).trim().toLowerCase() as ContractorIndustry;
+    if (!SUPPORTED_INDUSTRIES.includes(rawIndustry)) {
+      errors.industry = `Unsupported contractor industry. Supported values: ${SUPPORTED_INDUSTRIES.join(', ')}.`;
+    } else {
+      industry = normalizeIndustry(rawIndustry);
+    }
+  }
+
   if (Object.keys(errors).length > 0) {
     return {
       valid: false,
@@ -158,20 +329,35 @@ export function validateSettingsInput(input: unknown): SettingsValidationResult 
     errors: {},
     sanitized: {
       name,
+      ...(industry ? { industry } : {}),
       phone,
+      ...(businessEmail ? { businessEmail } : {}),
+      ...(website ? { website } : {}),
       address,
       city,
       state,
       postalCode,
+      ...(timezone ? { timezone } : {}),
       serviceAreas,
       supportedZips,
       servicesOffered,
       businessHours,
       emergencyServiceEnabled,
+      ...(afterHoursBehavior ? { afterHoursBehavior } : {}),
       afterHoursInstructions,
+      ...(callbackInstructions ? { callbackInstructions } : {}),
+      ...(appointmentRequestRules ? { appointmentRequestRules } : {}),
       transferPhoneNumber,
       transferInstructions,
       customGreeting,
+      ...(pronunciationGuide ? { pronunciationGuide } : {}),
+      ...(conversationPreferences ? { conversationPreferences } : {}),
+      ...(supportedLanguages ? { supportedLanguages } : {}),
+      ...(callerIntakeQuestions ? { callerIntakeQuestions } : {}),
+      ...(businessFaqs ? { businessFaqs } : {}),
+      ...(forwardingEnabled !== undefined ? { forwardingEnabled } : {}),
+      ...(forwardingMode ? { forwardingMode } : {}),
+      ...(carrierName ? { carrierName } : {}),
     },
   };
 }

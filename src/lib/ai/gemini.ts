@@ -41,6 +41,16 @@ export function getGeminiModel(): string {
   return model || DEFAULT_GEMINI_MODEL;
 }
 
+let mockGeminiClientOverride: GoogleGenAI | null = null;
+
+/**
+ * Allows deterministic integration/acceptance tests to supply a mock Gemini client
+ * without bypassing the mandatory GEMINI_API_KEY configuration check.
+ */
+export function setMockGeminiClientForTest(client: GoogleGenAI | null): void {
+  mockGeminiClientOverride = client;
+}
+
 /**
  * Initializes and returns a GoogleGenAI SDK client instance.
  * Throws a clean, user-friendly error if GEMINI_API_KEY is missing.
@@ -52,6 +62,10 @@ export function getGeminiClient(): GoogleGenAI {
     throw new Error(
       'Gemini API key is not configured. Please set GEMINI_API_KEY in your .env.local file to enable live AI conversations.'
     );
+  }
+
+  if (mockGeminiClientOverride) {
+    return mockGeminiClientOverride;
   }
 
   return new GoogleGenAI({ apiKey });

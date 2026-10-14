@@ -60,11 +60,30 @@ const SENSITIVE_KEYS = new Set([
   'base64audio',
 ]);
 
+const INLINE_SECRET_PATTERNS: RegExp[] = [
+  /AIza[0-9A-Za-z_-]{20,}/g,
+  /\bsk-[0-9A-Za-z_-]{20,}\b/g,
+  /\bBearer\s+[0-9A-Za-z._~+/-]+=*/gi,
+  /\beyJ[0-9A-Za-z_-]{10,}\.[0-9A-Za-z_-]{10,}\.[0-9A-Za-z_-]{5,}\b/g,
+];
+
+export function scrubStringSecrets(str: string): string {
+  let out = str;
+  for (const pattern of INLINE_SECRET_PATTERNS) {
+    out = out.replace(pattern, '[REDACTED_SECRET]');
+  }
+  out = out.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[REDACTED_SSN]');
+  return out;
+}
+
 /**
  * Recursively scrubs an arbitrary payload before outputting to server logs.
  */
 export function sanitizeLogPayload(obj: unknown, depth = 0): unknown {
   if (depth > 5) return '[Truncated]';
+  if (typeof obj === 'string') {
+    return scrubStringSecrets(obj);
+  }
   if (!obj || typeof obj !== 'object') {
     return obj;
   }
@@ -104,7 +123,9 @@ export function sanitizeLogPayload(obj: unknown, depth = 0): unknown {
       continue;
     }
 
-    if (typeof value === 'object' && value !== null) {
+    if (typeof value === 'string') {
+      sanitized[key] = scrubStringSecrets(value);
+    } else if (typeof value === 'object' && value !== null) {
       sanitized[key] = sanitizeLogPayload(value, depth + 1);
     } else {
       sanitized[key] = value;
