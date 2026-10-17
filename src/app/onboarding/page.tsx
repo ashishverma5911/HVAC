@@ -38,7 +38,10 @@ import { createClient } from '@/lib/supabase/client';
 import {
   validateOnboardingInput,
   validateOnboardingStep,
+  isValidEmailAddress,
 } from '@/lib/validation/contractorOnboarding';
+import { validateEmailAddress } from '@/lib/validation/emailValidation';
+import { getEmailCallbackUrl } from '@/lib/auth/redirectUrl';
 import {
   SUPPORTED_VOICE_LANGUAGES,
   US_CONTRACTOR_TIMEZONES,
@@ -407,8 +410,16 @@ export default function OnboardingPage() {
     setErrorMessage(null);
     setAuthSuccessNotice(null);
 
-    if (!authEmailInput.trim() || !authPasswordInput) {
-      setErrorMessage('Please enter both your email address and password.');
+    // 1. Strict Email Syntax Validation
+    const emailResult = validateEmailAddress(authEmailInput);
+    if (!emailResult.valid) {
+      setErrorMessage(emailResult.error || 'Please enter a valid work email address.');
+      return;
+    }
+    const cleanEmail = emailResult.normalizedEmail;
+
+    if (!authPasswordInput) {
+      setErrorMessage('Please enter your password.');
       return;
     }
 
@@ -427,18 +438,27 @@ export default function OnboardingPage() {
     try {
       const supabase = createClient();
       if (authMode === 'signup') {
+        const emailRedirectTo = getEmailCallbackUrl('/onboarding');
         const { data, error } = await supabase.auth.signUp({
-          email: authEmailInput.trim(),
+          email: cleanEmail,
           password: authPasswordInput,
+          options: {
+            emailRedirectTo,
+          },
         });
         if (error) {
-          setErrorMessage(error.message);
+          const msg = error.message.toLowerCase();
+          if (msg.includes('already registered') || msg.includes('already exists')) {
+            setErrorMessage('An account with this email address already exists. Please sign in or reset your password.');
+          } else {
+            setErrorMessage(error.message);
+          }
           setAuthLoading(false);
           return;
         }
         if (data.user && !data.session) {
           setAuthSuccessNotice(
-            'Account created! Please check your email inbox to confirm your address, or sign in if confirmation is disabled.'
+            `Account created! A confirmation link has been sent to ${cleanEmail}. Please check your email inbox to confirm your address before signing in.`
           );
           setAuthMode('signin');
           setAuthLoading(false);
@@ -446,25 +466,32 @@ export default function OnboardingPage() {
         }
         if (data.user) {
           setIsAuthenticated(true);
-          setUserEmail(data.user.email || authEmailInput.trim());
+          setUserEmail(data.user.email || cleanEmail);
           setUserId(data.user.id);
-          setBusinessEmail((prev) => prev || data.user?.email || authEmailInput.trim());
+          setBusinessEmail((prev) => prev || data.user?.email || cleanEmail);
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: authEmailInput.trim(),
+          email: cleanEmail,
           password: authPasswordInput,
         });
         if (error) {
-          setErrorMessage(error.message);
+          const msg = error.message;
+          if (msg.toLowerCase().includes('email not confirmed')) {
+            setErrorMessage('Your email address has not been confirmed yet. Please check your inbox for the verification link.');
+          } else if (msg.toLowerCase().includes('invalid login credentials')) {
+            setErrorMessage('Invalid email or password. Please verify your credentials and try again.');
+          } else {
+            setErrorMessage(msg);
+          }
           setAuthLoading(false);
           return;
         }
         if (data.user) {
           setIsAuthenticated(true);
-          setUserEmail(data.user.email || authEmailInput.trim());
+          setUserEmail(data.user.email || cleanEmail);
           setUserId(data.user.id);
-          setBusinessEmail((prev) => prev || data.user?.email || authEmailInput.trim());
+          setBusinessEmail((prev) => prev || data.user?.email || cleanEmail);
         }
       }
     } catch (err: unknown) {
@@ -1701,7 +1728,7 @@ export default function OnboardingPage() {
                 </label>
               </div>
               <p className="text-xs text-slate-500">
-                Limited strictly to languages verified for low-latency Gemini Live &amp; Twilio voice streaming.
+                Limited strictly to languages verified for low-latency AERIS Voice &amp; Twilio voice streaming.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {SUPPORTED_VOICE_LANGUAGES.map((lang) => {

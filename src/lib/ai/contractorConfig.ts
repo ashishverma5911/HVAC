@@ -26,7 +26,7 @@ export const SUPPORTED_VOICE_LANGUAGES: ReadonlyArray<{
   {
     code: 'en-US',
     label: 'English (US)',
-    description: 'Native US English voice & text receptionist (Gemini 2.5 Native Audio)',
+    description: 'Native US English voice & text receptionist (AERIS Native Audio)',
   },
   {
     code: 'es-US',

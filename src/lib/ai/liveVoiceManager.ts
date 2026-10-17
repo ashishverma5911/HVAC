@@ -80,6 +80,9 @@ export class LiveVoiceManager {
   // Gemini Live Session
   private liveSession: any = null;
   private aiClient: GoogleGenAI | null = null;
+  private openingGreeting: string =
+    "Hi, you've reached Summit HVAC. I'm AERIS, your receptionist. How can I help you today?";
+  private hasTriggeredGreeting: boolean = false;
 
   // Canonical Turn Buffers & Identifiers
   private userTurnCounter: number = 0;
@@ -133,6 +136,71 @@ export class LiveVoiceManager {
     this.callbacks.onDiagnostics?.({ ...this.diagnostics });
   }
 
+  public setOpeningGreeting(greeting: string): void {
+    if (typeof greeting === 'string' && greeting.trim().length > 0) {
+      this.openingGreeting = greeting.trim();
+    }
+  }
+
+  /**
+   * Prompts the connected live session to speak the opening receptionist greeting out loud.
+   */
+  public triggerInitialGreeting(): void {
+    if (!this.liveSession || this.hasTriggeredGreeting) return;
+    this.hasTriggeredGreeting = true;
+    try {
+      console.log('[Live Voice] Triggering spoken initial receptionist greeting');
+      this.setState('PROCESSING');
+      this.liveSession.sendClientContent({
+        turns: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `[System Trigger: The customer just connected to your HVAC business. Answer naturally and warmly with your opening receptionist greeting now: "${this.openingGreeting}"]`,
+              },
+            ],
+          },
+        ],
+        turnComplete: true,
+      });
+    } catch (err) {
+      console.error('[Live Voice] Error triggering initial greeting:', err);
+    }
+  }
+
+  /**
+   * Sends user text to the active live session so the model responds with spoken audio.
+   */
+  public sendUserText(text: string): boolean {
+    if (!this.liveSession || this.state === 'IDLE' || this.state === 'ENDED' || this.state === 'ERROR') {
+      return false;
+    }
+
+    try {
+      this.finalizeUserTurn();
+      this.currentUserTurnText = text;
+      this.isUserTurnActive = true;
+      this.finalizeUserTurn();
+
+      this.setState('PROCESSING');
+
+      this.liveSession.sendClientContent({
+        turns: [
+          {
+            role: 'user',
+            parts: [{ text }],
+          },
+        ],
+        turnComplete: true,
+      });
+      return true;
+    } catch (err) {
+      console.error('[Live Voice] Error sending text to live session:', err);
+      return false;
+    }
+  }
+
   private setState(newState: VoiceState): void {
     if (this.state === newState) return;
     this.state = newState;
@@ -159,6 +227,7 @@ export class LiveVoiceManager {
     this.currentAiTurnText = '';
     this.isUserTurnActive = false;
     this.isAiTurnActive = false;
+    this.hasTriggeredGreeting = false;
 
     this.diagnostics = {
       sessionId: generatedSessionId,
@@ -310,8 +379,12 @@ export class LiveVoiceManager {
             this.diagnostics.liveSession = 'connected';
             this.emitDiagnostics();
             this.setState(this.isMutedState ? 'MUTED' : 'LISTENING');
+            this.triggerInitialGreeting();
           },
           onmessage: (msg: any) => {
+            if (msg.setupComplete) {
+              this.triggerInitialGreeting();
+            }
             this.handleServerMessage(msg);
           },
           onerror: (err: any) => {
@@ -358,6 +431,7 @@ export class LiveVoiceManager {
       });
 
       this.liveSession = session;
+      this.triggerInitialGreeting();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to start voice conversation.';
       console.error('[Live Voice] Initialization failed:', msg);
@@ -441,9 +515,9 @@ export class LiveVoiceManager {
       const base64Audio = arrayBufferToBase64(pcm16.buffer);
 
       try {
-        // Send single audio field as required by Gemini Live API
+        // Send realtime audio chunks to Live session
         this.liveSession.sendRealtimeInput({
-          audio: {
+          media: {
             mimeType: 'audio/pcm;rate=16000',
             data: base64Audio,
           },
@@ -614,7 +688,7 @@ export class LiveVoiceManager {
    * Plays a 24000Hz PCM audio chunk through Web Audio API.
    */
   private playAudioChunk(base64Data: string): void {
-    if (!this.audioContext) return;
+    if (!this.audioContext || this.audioContext.state === 'closed') return;
 
     if (this.audioContext.state === 'suspended') {
       this.audioContext.resume().catch(() => {});
@@ -622,6 +696,7 @@ export class LiveVoiceManager {
 
     try {
       const int16Array = base64ToInt16Array(base64Data);
+      if (!int16Array || int16Array.length === 0) return;
       const float32Array = pcm16ToFloat32(int16Array);
 
       // Calculate audio energy for AI speaking visualization
@@ -640,9 +715,9 @@ export class LiveVoiceManager {
       sourceNode.buffer = audioBuffer;
       sourceNode.connect(this.audioContext.destination);
 
-      // Low latency scheduling: schedule immediately after the previous chunk
+      // Low latency scheduling: schedule with 25ms lead-in jitter buffer if idle
       const now = this.audioContext.currentTime;
-      const startTime = Math.max(now, this.nextPlayTime);
+      const startTime = this.nextPlayTime > now ? this.nextPlayTime : now + 0.025;
       sourceNode.start(startTime);
       this.nextPlayTime = startTime + audioBuffer.duration;
 
@@ -657,12 +732,16 @@ export class LiveVoiceManager {
           this.activeAudioSources.splice(index, 1);
         }
         if (this.activeAudioSources.length === 0) {
-          this.diagnostics.playback = 'idle';
-          this.callbacks.onAudioLevel?.(0);
-          this.emitDiagnostics();
-          if (this.state === 'AI_SPEAKING') {
-            this.setState(this.isMutedState ? 'MUTED' : 'LISTENING');
-          }
+          setTimeout(() => {
+            if (this.activeAudioSources.length === 0) {
+              this.diagnostics.playback = 'idle';
+              this.callbacks.onAudioLevel?.(0);
+              this.emitDiagnostics();
+              if (this.state === 'AI_SPEAKING') {
+                this.setState(this.isMutedState ? 'MUTED' : 'LISTENING');
+              }
+            }
+          }, 100);
         }
       };
     } catch (err) {

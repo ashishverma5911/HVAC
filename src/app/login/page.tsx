@@ -4,28 +4,43 @@ import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Bot, Mail, Lock, AlertCircle, ArrowRight, CheckCircle2, Loader2, ArrowLeft, ShieldCheck, Sun, Moon } from 'lucide-react';
+import {
+  Bot,
+  Mail,
+  Lock,
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  Loader2,
+  ArrowLeft,
+  Sun,
+  Moon,
+  RefreshCw,
+} from 'lucide-react';
 import { useTheme } from '@/lib/context/ThemeContext';
+import { validateEmailAddress } from '@/lib/validation/emailValidation';
+import { getEmailCallbackUrl, sanitizeRedirectPath } from '@/lib/auth/redirectUrl';
 
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawRedirect = searchParams.get('redirect');
-  const redirectTarget =
-    rawRedirect &&
-    rawRedirect.startsWith('/') &&
-    !rawRedirect.startsWith('//') &&
-    !rawRedirect.startsWith('/\\')
-      ? rawRedirect
-      : '/dashboard';
+  const redirectTarget = sanitizeRedirectPath(rawRedirect, '/dashboard');
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Verification & Recovery State
+  const [showResendUI, setShowResendUI] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
+
   const { theme, toggleTheme } = useTheme();
 
   // Check if Supabase client can be initialized
@@ -39,10 +54,100 @@ function LoginContent() {
     }
   }, []);
 
+  // Inspect incoming URL query parameters for verification outcomes
+  useEffect(() => {
+    const verifiedParam = searchParams.get('verified');
+    const errorParam = searchParams.get('error');
+    const errorDescription = searchParams.get('error_description');
+
+    if (verifiedParam === 'true') {
+      setSuccessMessage('Your email has been verified successfully! You can now sign in to your AERIS account.');
+      setMode('signin');
+      setErrorMessage(null);
+    } else if (errorParam === 'verification_failed') {
+      const description =
+        errorDescription || 'Your email verification link is invalid, has expired, or has already been used.';
+      setErrorMessage(description);
+      setShowResendUI(true);
+    }
+  }, [searchParams]);
+
+  // Real-time frontend validation on blur and change
+  const handleEmailChange = (val: string) => {
+    setEmail(val);
+    setErrorMessage(null);
+    if (emailError) {
+      const result = validateEmailAddress(val);
+      if (result.valid) {
+        setEmailError(null);
+      }
+    }
+  };
+
+  const handleEmailBlur = () => {
+    if (!email.trim()) return;
+    const result = validateEmailAddress(email);
+    if (!result.valid) {
+      setEmailError(result.error || 'Please enter a valid email address.');
+    } else {
+      setEmailError(null);
+    }
+  };
+
+  // Resend verification email handler
+  const handleResendVerification = async () => {
+    const emailResult = validateEmailAddress(email);
+    if (!emailResult.valid) {
+      setEmailError(emailResult.error || 'Please enter your email address to receive a new link.');
+      return;
+    }
+
+    setResendingEmail(true);
+    setResendStatus(null);
+    try {
+      const res = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: emailResult.normalizedEmail,
+          next: redirectTarget,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setResendStatus(data.error || 'Unable to send verification email. Please try again.');
+      } else {
+        setResendStatus(data.message || 'A new verification link has been sent to your email.');
+      }
+    } catch {
+      setResendStatus('Failed to send verification email. Please check your internet connection.');
+    } finally {
+      setResendingEmail(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+    setResendStatus(null);
+
+    // 1. Frontend Email Syntax Validation
+    const emailResult = validateEmailAddress(email);
+    if (!emailResult.valid) {
+      setEmailError(emailResult.error || 'Please enter a valid email address.');
+      setErrorMessage(emailResult.error || 'Please enter a valid email address.');
+      return;
+    }
+    setEmailError(null);
+    const cleanEmail = emailResult.normalizedEmail;
+
+    if (!password || password.length < 6) {
+      setErrorMessage('Password must be at least 6 characters long.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -50,12 +155,22 @@ function LoginContent() {
 
       if (mode === 'signin') {
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
+          email: cleanEmail,
           password,
         });
 
         if (error) {
-          setErrorMessage(error.message);
+          const msg = error.message;
+          if (msg.toLowerCase().includes('email not confirmed')) {
+            setErrorMessage(
+              'Your email address has not been confirmed yet. Please check your inbox or click "Resend Verification Email" below.'
+            );
+            setShowResendUI(true);
+          } else if (msg.toLowerCase().includes('invalid login credentials')) {
+            setErrorMessage('Invalid email or password. Please verify your credentials and try again.');
+          } else {
+            setErrorMessage(msg);
+          }
           setLoading(false);
           return;
         }
@@ -65,34 +180,43 @@ function LoginContent() {
           router.refresh();
         }
       } else {
-        // Sign Up
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            data: {
-              full_name: fullName.trim(),
-            },
-          },
+        // Sign Up: Validate on server via /api/auth/register
+        const callbackUrl = getEmailCallbackUrl(redirectTarget);
+
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password,
+            fullName: fullName.trim(),
+            next: redirectTarget,
+          }),
         });
 
-        if (error) {
-          setErrorMessage(error.message);
+        const data = await res.json();
+
+        if (!res.ok) {
+          // If server returns error, handle appropriately
+          setErrorMessage(data.error || 'Registration failed. Please check your details.');
           setLoading(false);
           return;
         }
 
-        if (data.session) {
-          setSuccessMessage('Account created successfully! Redirecting to setup...');
+        if (data.requiresVerification) {
+          setSuccessMessage(
+            `Account registered! We've sent a verification link to ${cleanEmail}. Please click the link to confirm your account.`
+          );
+          setMode('signin');
+          setShowResendUI(true);
+          setLoading(false);
+        } else {
+          // Session established directly
+          setSuccessMessage('Account created successfully! Redirecting...');
           setTimeout(() => {
             router.push('/onboarding');
             router.refresh();
           }, 800);
-        } else if (data.user) {
-          setSuccessMessage(
-            'Account registered! Please check your email inbox to confirm your account before signing in.'
-          );
-          setLoading(false);
         }
       }
     } catch (err: unknown) {
@@ -192,7 +316,20 @@ function LoginContent() {
           {errorMessage && (
             <div className="mb-4 rounded-xl bg-rose-500/10 p-3.5 border border-rose-500/25 flex items-start gap-2.5 text-rose-600 dark:text-rose-400 text-xs">
               <AlertCircle className="h-4 w-4 text-rose-500 mt-0.5 shrink-0" />
-              <span>{errorMessage}</span>
+              <div className="flex-1">
+                <p>{errorMessage}</p>
+                {showResendUI && (
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={resendingEmail}
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-cyan-400 hover:underline disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${resendingEmail ? 'animate-spin' : ''}`} />
+                    <span>{resendingEmail ? 'Sending...' : 'Resend Verification Email'}</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -200,6 +337,12 @@ function LoginContent() {
             <div className="mb-4 rounded-xl bg-emerald-500/10 p-3.5 border border-emerald-500/25 flex items-start gap-2.5 text-emerald-600 dark:text-emerald-400 text-xs">
               <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
               <span>{successMessage}</span>
+            </div>
+          )}
+
+          {resendStatus && (
+            <div className="mb-4 rounded-xl bg-blue-500/10 p-3 border border-blue-500/25 text-blue-600 dark:text-cyan-400 text-xs">
+              {resendStatus}
             </div>
           )}
 
@@ -232,11 +375,22 @@ function LoginContent() {
                   type="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => handleEmailChange(e.target.value)}
+                  onBlur={handleEmailBlur}
                   placeholder="contractor@example.com"
-                  className="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] pl-10 pr-3.5 py-2 text-sm text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
+                  className={`w-full rounded-xl border bg-[var(--surface-raised)] pl-10 pr-3.5 py-2 text-sm text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none transition ${
+                    emailError
+                      ? 'border-rose-500 focus:ring-1 focus:ring-rose-500'
+                      : 'border-[var(--surface-border)] focus:ring-1 focus:ring-blue-500'
+                  }`}
                 />
               </div>
+              {emailError && (
+                <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3 shrink-0" />
+                  <span>{emailError}</span>
+                </p>
+              )}
             </div>
 
             <div>

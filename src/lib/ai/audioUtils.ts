@@ -44,14 +44,19 @@ export function arrayBufferToBase64(buffer: ArrayBufferLike): string {
 
 /**
  * Converts a base64 string to an Int16Array (16-bit PCM).
+ * Safely handles URL-safe base64, missing padding, and odd byte counts.
  */
 export function base64ToInt16Array(base64: string): Int16Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
+  const clean = base64.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = clean.length % 4;
+  const padded = pad ? clean + '='.repeat(4 - pad) : clean;
+  const binary = atob(padded);
+  const sampleCount = Math.floor(binary.length / 2);
+  const bytes = new Uint8Array(sampleCount * 2);
+  for (let i = 0; i < sampleCount * 2; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  return new Int16Array(bytes.buffer);
+  return new Int16Array(bytes.buffer, 0, sampleCount);
 }
 
 /**

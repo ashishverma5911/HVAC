@@ -6,6 +6,7 @@ import {
   SupportedVoiceLanguage,
   SUPPORTED_VOICE_LANGUAGES,
 } from '@/lib/ai/contractorConfig';
+import { isValidEmailAddress } from './emailValidation';
 
 export type OnboardingForwardingMode =
   | 'unconditional'
@@ -84,10 +85,7 @@ export function isValidPhoneNumber(phone: string): boolean {
   return digits.length === 10 || (digits.length === 11 && digits.startsWith('1'));
 }
 
-export function isValidEmailAddress(email: string): boolean {
-  if (!email || typeof email !== 'string') return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-}
+export { isValidEmailAddress, validateEmailAddress, type EmailValidationResult } from './emailValidation';
 
 export function isValidWebsiteUrl(url: string): boolean {
   if (!url || typeof url !== 'string') return false;

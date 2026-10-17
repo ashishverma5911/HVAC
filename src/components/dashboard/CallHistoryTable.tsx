@@ -178,7 +178,7 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
             <p className="text-[11px] text-[var(--muted)] flex items-center gap-1.5 pt-0.5">
               <Info className="h-3.5 w-3.5 shrink-0 text-amber-500" />
               <span>
-                <strong>Transcripts:</strong> Persisted for inbound telephony bridge calls and browser text chat. Browser live-voice demo sessions stream directly to Gemini Live and do not persist turn-by-turn transcripts unless a tool action occurs.
+                <strong>Transcripts:</strong> Persisted for inbound telephony bridge calls and browser text chat. Browser live-voice demo sessions stream directly to AERIS Voice and do not persist turn-by-turn transcripts unless a tool action occurs.
               </span>
             </p>
           </div>

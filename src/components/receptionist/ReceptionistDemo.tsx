@@ -314,11 +314,21 @@ export const ReceptionistDemo: React.FC = () => {
     });
 
     voiceManagerRef.current = manager;
+    if (openingGreeting) {
+      manager.setOpeningGreeting(openingGreeting);
+    }
 
     return () => {
       manager.stop();
     };
-  }, [handleActionExecuted]);
+  }, [handleActionExecuted, openingGreeting]);
+
+  // Keep manager updated if verified contractor openingGreeting loads asynchronously
+  useEffect(() => {
+    if (voiceManagerRef.current && openingGreeting) {
+      voiceManagerRef.current.setOpeningGreeting(openingGreeting);
+    }
+  }, [openingGreeting]);
 
   // Voice Call Handlers
   const handleStartVoice = async () => {
@@ -326,16 +336,7 @@ export const ReceptionistDemo: React.FC = () => {
     setVoiceErrorMessage(null);
     if (!voiceManagerRef.current) return;
 
-    if (messages.length === 0) {
-      const greetingMsg: ConversationMessage = {
-        id: `greeting-${Date.now()}`,
-        sender: 'ai',
-        text: openingGreeting,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages([greetingMsg]);
-    }
-
+    voiceManagerRef.current.setOpeningGreeting(openingGreeting);
     await voiceManagerRef.current.start(conversationId);
   };
 
@@ -481,22 +482,30 @@ export const ReceptionistDemo: React.FC = () => {
     }
   };
 
-  const handleSelectScenario = (id: string) => {
-    setActiveScenarioId(id);
-    const target = demoScenarios.find((s) => s.id === id);
-    if (!target) return;
-    const customerOpener = target.messages.find((m) => m.sender === 'customer')?.text;
-    if (customerOpener) {
-      sendToGemini(customerOpener);
-    }
-  };
-
   const isCallActive =
     voiceState === 'CONNECTING' ||
     voiceState === 'LISTENING' ||
     voiceState === 'AI_SPEAKING' ||
     voiceState === 'PROCESSING' ||
     voiceState === 'MUTED';
+
+  const handleUserTextMessage = (customerText: string) => {
+    if (isCallActive && voiceManagerRef.current && voiceState !== 'CONNECTING') {
+      const handled = voiceManagerRef.current.sendUserText(customerText);
+      if (handled) return;
+    }
+    sendToGemini(customerText);
+  };
+
+  const handleSelectScenario = (id: string) => {
+    setActiveScenarioId(id);
+    const target = demoScenarios.find((s) => s.id === id);
+    if (!target) return;
+    const customerOpener = target.messages.find((m) => m.sender === 'customer')?.text;
+    if (customerOpener) {
+      handleUserTextMessage(customerOpener);
+    }
+  };
 
   return (
     <section id="interactive-demo" className="py-8 bg-transparent">
@@ -599,7 +608,7 @@ export const ReceptionistDemo: React.FC = () => {
                 scenarios={demoScenarios}
                 activeScenarioId={activeScenarioId}
                 onSelectScenario={handleSelectScenario}
-                onSendTextMessage={sendToGemini}
+                onSendTextMessage={handleUserTextMessage}
                 isThinking={isThinking}
                 onReset={handleReset}
               />

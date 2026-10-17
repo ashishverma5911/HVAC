@@ -237,7 +237,7 @@ export function VoiceControls({
             </div>
 
             <p className="text-[11px] text-[var(--muted)] text-center sm:text-right">
-              Powered by <strong className="text-[var(--foreground)]">Gemini 3.8 Live Multimodal</strong>
+              Powered by <strong className="text-[var(--foreground)]">AERIS Intelligence</strong>
             </p>
           </div>
         </div>
