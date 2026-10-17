@@ -52,18 +52,18 @@ function getOutcomeBadgeClasses(outcome: ContractorCallHistoryItem['outcome']): 
     case 'lead_captured':
     case 'appointment_requested':
     case 'transferred':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30';
     case 'human_escalation_requested':
-      return 'bg-amber-50 text-amber-800 border-amber-200';
+      return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30';
     case 'failed':
     case 'missed':
     case 'abandoned':
-      return 'bg-red-50 text-red-700 border-red-200';
+      return 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30';
     case 'in_progress':
-      return 'bg-blue-50 text-blue-700 border-blue-200';
+      return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30';
     case 'completed_no_lead':
     default:
-      return 'bg-slate-100 text-slate-700 border-slate-200';
+      return 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30';
   }
 }
 
@@ -158,26 +158,25 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
   return (
     <div className="space-y-4">
       {/* Call Recording & Consent Compliance Banner */}
-      <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <ShieldAlert className="h-5 w-5 text-amber-700 shrink-0 mt-0.5" />
-          <div className="space-y-1">
+      <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-xs font-bold text-amber-950 uppercase tracking-wider">
+              <h3 className="text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
                 Call Recording &amp; Privacy Safeguards
               </h3>
-              <span className="text-[11px] font-semibold bg-white text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] font-semibold bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
                 Audio Recording: Disabled by Default
               </span>
             </div>
-            <p className="text-xs text-amber-900 leading-relaxed">
-              AERIS does not automatically record call audio (<code className="font-mono text-[11px]">recordingEnabled: false</code>).
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              AERIS does not automatically record raw call audio (<code className="font-mono text-[11px] bg-amber-500/20 px-1 py-0.5 rounded text-amber-900 dark:text-amber-200">recordingEnabled: false</code>).
               Before enabling audio recording for any US contractor pilot, federal law (<code className="font-mono text-[11px]">18 U.S.C. § 2511</code>)
-              and state all-party consent statutes (including CA, PA, FL, IL, MD, MA, MT, NH, WA, CT, MI, NV, OR, DE) require explicit
-              pre-recording caller disclosure and consent.
+              and state all-party consent statutes require explicit pre-recording caller disclosure and consent.
             </p>
-            <p className="text-[11px] text-amber-800 flex items-center gap-1.5 pt-0.5">
-              <Info className="h-3.5 w-3.5 shrink-0" />
+            <p className="text-[11px] text-[var(--muted)] flex items-center gap-1.5 pt-0.5">
+              <Info className="h-3.5 w-3.5 shrink-0 text-amber-500" />
               <span>
                 <strong>Transcripts:</strong> Persisted for inbound telephony bridge calls and browser text chat. Browser live-voice demo sessions stream directly to Gemini Live and do not persist turn-by-turn transcripts unless a tool action occurs.
               </span>
@@ -187,32 +186,32 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
       </div>
 
       {actionError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700 font-medium">
+        <div className="bg-rose-500/10 border border-rose-500/25 rounded-xl p-3 text-xs text-rose-600 dark:text-rose-400 font-medium">
           {actionError}
         </div>
       )}
 
       {/* Call History Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div className="bg-[var(--surface)] rounded-2xl border border-[var(--surface-border)] shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-[var(--surface-border)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
-            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <PhoneCall className="h-4 w-4 text-blue-600" />
+            <h2 className="text-base font-bold text-[var(--foreground)] flex items-center gap-2">
+              <PhoneCall className="h-4 w-4 text-blue-500" />
               <span>Inbound Call History &amp; Lifecycle Records</span>
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-[var(--muted)] mt-0.5">
               Verified call records, lifecycle events, outcomes, and persisted transcripts scoped to your contractor organization.
             </p>
           </div>
-          <span className="text-xs font-medium text-slate-500">
+          <span className="text-xs font-medium text-[var(--muted)] font-mono">
             {calls.length} {calls.length === 1 ? 'record' : 'records'}
           </span>
         </div>
 
         {calls.length === 0 ? (
-          <div className="p-8 text-center space-y-2">
-            <p className="text-sm font-semibold text-slate-800">No Persisted Call Records Yet</p>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
+          <div className="p-10 text-center space-y-2">
+            <p className="text-sm font-semibold text-[var(--foreground)]">No Persisted Call Records Yet</p>
+            <p className="text-xs text-[var(--muted)] max-w-md mx-auto">
               Inbound telephone calls and receptionist chat sessions will appear here with real timestamps, outcomes, and lifecycle audit trails.
             </p>
           </div>
@@ -220,7 +219,7 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <tr className="bg-[var(--surface-raised)] border-b border-[var(--surface-border)] text-[11px] font-bold uppercase tracking-wider text-[var(--muted)]">
                   <th className="py-3 px-4">Date &amp; Time</th>
                   <th className="py-3 px-4">Caller</th>
                   <th className="py-3 px-4">Duration</th>
@@ -231,7 +230,7 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                   <th className="py-3 px-4 text-right">Details</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 text-xs">
+              <tbody className="divide-y divide-[var(--surface-border)]/50 text-xs">
                 {calls.map((call) => {
                   const isExpanded = expandedCallId === call.id;
                   const detail = callDetails[call.id];
@@ -245,10 +244,10 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
 
                   return (
                     <React.Fragment key={call.id}>
-                      <tr className="hover:bg-slate-50/70 transition">
-                        <td className="py-3.5 px-4 whitespace-nowrap font-medium text-slate-900">
+                      <tr className="hover:bg-[var(--surface-raised)]/60 transition">
+                        <td className="py-3.5 px-4 whitespace-nowrap font-medium text-[var(--foreground)]">
                           <div>{formattedDate}</div>
-                          <div className="text-[11px] text-slate-400 font-mono">
+                          <div className="text-[11px] text-[var(--muted)] font-mono">
                             {call.channel === 'telephony' ? 'Telephony / Voice' : 'Web Chat'}
                             {call.callSid ? ` · ${call.callSid.slice(0, 12)}` : ''}
                           </div>
@@ -258,20 +257,20 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                           {call.callerName || call.callerPhone ? (
                             <div>
                               {call.callerName && (
-                                <div className="font-semibold text-slate-900">{call.callerName}</div>
+                                <div className="font-semibold text-[var(--foreground)]">{call.callerName}</div>
                               )}
-                              <div className="text-slate-600 font-mono text-[11px]">
+                              <div className="text-[var(--muted)] font-mono text-[11px]">
                                 {call.callerPhone || 'Phone not provided'}
                               </div>
                             </div>
                           ) : (
-                            <span className="text-slate-400 italic">Caller ID unavailable</span>
+                            <span className="text-[var(--muted)] italic">Caller ID unavailable</span>
                           )}
                         </td>
 
-                        <td className="py-3.5 px-4 whitespace-nowrap text-slate-700">
+                        <td className="py-3.5 px-4 whitespace-nowrap text-[var(--foreground)]">
                           <span className="inline-flex items-center gap-1">
-                            <Clock className="h-3.5 w-3.5 text-slate-400" />
+                            <Clock className="h-3.5 w-3.5 text-[var(--muted)]" />
                             {formatDuration(call.durationSeconds)}
                           </span>
                         </td>
@@ -290,17 +289,17 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                             <span>{call.outcomeLabel}</span>
                           </span>
                           {call.failureReason && (
-                            <div className="text-[11px] text-red-600 mt-1 max-w-xs">
+                            <div className="text-[11px] text-rose-600 dark:text-rose-400 mt-1 max-w-xs">
                               Reason: {call.failureReason}
                             </div>
                           )}
                         </td>
 
-                        <td className="py-3.5 px-4 text-slate-700">
+                        <td className="py-3.5 px-4 text-[var(--foreground)]">
                           {call.requestedService ? (
-                            <span className="font-medium text-slate-800">{call.requestedService}</span>
+                            <span className="font-medium text-[var(--foreground)]">{call.requestedService}</span>
                           ) : (
-                            <span className="text-slate-400 italic">Not captured</span>
+                            <span className="text-[var(--muted)] italic">Not captured</span>
                           )}
                         </td>
 
@@ -309,35 +308,35 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                             <div className="space-y-0.5">
                               <Link
                                 href="/leads"
-                                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-semibold"
+                                className="inline-flex items-center gap-1 text-blue-600 dark:text-cyan-400 hover:underline font-semibold"
                               >
                                 <span>{call.relatedLead.customerName || 'Lead Record'}</span>
                                 <ExternalLink className="h-3 w-3" />
                               </Link>
-                              <div className="text-[11px] text-slate-500">
+                              <div className="text-[11px] text-[var(--muted)]">
                                 {call.relatedLead.urgency} · {call.relatedLead.status}
                               </div>
                             </div>
                           ) : (
-                            <span className="text-slate-400 italic">None</span>
+                            <span className="text-[var(--muted)] italic">None</span>
                           )}
                         </td>
 
                         <td className="py-3.5 px-4 whitespace-nowrap">
                           {call.transcriptStatus === 'complete' && (
-                            <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
+                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
                               <FileText className="h-3.5 w-3.5" />
                               <span>Saved ({call.transcriptCount} turns)</span>
                             </span>
                           )}
                           {call.transcriptStatus === 'partial' && (
-                            <span className="inline-flex items-center gap-1 text-amber-700 font-medium">
+                            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
                               <FileText className="h-3.5 w-3.5" />
                               <span>Partial ({call.transcriptCount} turns)</span>
                             </span>
                           )}
                           {call.transcriptStatus === 'unavailable' && (
-                            <span className="text-slate-400 italic">Not recorded</span>
+                            <span className="text-[var(--muted)] italic">Not recorded</span>
                           )}
                         </td>
 
@@ -345,7 +344,7 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                           <button
                             type="button"
                             onClick={() => toggleCallDetail(call.id)}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 px-2.5 py-1 rounded-lg hover:bg-blue-50 transition"
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-cyan-400 hover:underline px-2.5 py-1 rounded-lg hover:bg-blue-500/10 transition"
                           >
                             <span>{isExpanded ? 'Hide' : 'Inspect'}</span>
                             {isExpanded ? (
@@ -358,11 +357,11 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                       </tr>
 
                       {isExpanded && (
-                        <tr className="bg-slate-50/90">
-                          <td colSpan={8} className="p-4 sm:p-6 border-t border-slate-200">
+                        <tr className="bg-[var(--surface-raised)]/70">
+                          <td colSpan={8} className="p-4 sm:p-6 border-t border-[var(--surface-border)]">
                             {loadingCallId === call.id ? (
-                              <div className="flex items-center gap-2 text-xs text-slate-500 py-4">
-                                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                              <div className="flex items-center gap-2 text-xs text-[var(--muted)] py-4">
+                                <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
                                 <span>Loading call transcript and lifecycle events...</span>
                               </div>
                             ) : (
@@ -370,7 +369,7 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                                 {/* Persisted Transcript Section */}
                                 <div className="space-y-2">
                                   <div className="flex items-center justify-between">
-                                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">
                                       Persisted Call Transcript ({detail?.call.transcriptStatus ?? call.transcriptStatus})
                                     </h4>
                                     {isRealContractor && (
@@ -379,7 +378,7 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                                           type="button"
                                           disabled={actionBusyId === call.id}
                                           onClick={() => handleRedactPii(call.id)}
-                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-md transition disabled:opacity-50"
+                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2.5 py-1 rounded-lg transition disabled:opacity-50"
                                         >
                                           <EyeOff className="h-3 w-3" />
                                           <span>Redact PII</span>
@@ -388,7 +387,7 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                                           type="button"
                                           disabled={actionBusyId === call.id}
                                           onClick={() => handleDeleteCall(call.id)}
-                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-md transition disabled:opacity-50"
+                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-2.5 py-1 rounded-lg transition disabled:opacity-50"
                                         >
                                           <Trash2 className="h-3 w-3" />
                                           <span>Delete Record</span>
@@ -398,28 +397,28 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                                   </div>
 
                                   {detail && detail.transcripts.length > 0 ? (
-                                    <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-2 max-h-64 overflow-y-auto">
+                                    <div className="bg-[var(--surface)] rounded-xl border border-[var(--surface-border)] p-3 space-y-2 max-h-64 overflow-y-auto">
                                       {detail.transcripts.map((msg) => (
                                         <div
                                           key={msg.id}
-                                          className={`p-2 rounded-lg text-xs ${
+                                          className={`p-2.5 rounded-xl text-xs ${
                                             msg.sender === 'ai'
-                                              ? 'bg-blue-50/70 text-slate-800 border border-blue-100'
-                                              : 'bg-slate-100 text-slate-900'
+                                              ? 'bg-blue-500/10 text-[var(--foreground)] border border-blue-500/20'
+                                              : 'bg-[var(--surface-raised)] text-[var(--foreground)] border border-[var(--surface-border)]'
                                           }`}
                                         >
-                                          <div className="flex items-center justify-between text-[10px] font-bold uppercase text-slate-500 mb-0.5">
+                                          <div className="flex items-center justify-between text-[10px] font-bold uppercase text-[var(--muted)] mb-1">
                                             <span>{msg.sender === 'ai' ? 'AERIS Receptionist' : 'Caller'}</span>
                                             {msg.incomplete && (
-                                              <span className="text-amber-700">Partial / Interrupted</span>
+                                              <span className="text-amber-600 dark:text-amber-400">Partial / Interrupted</span>
                                             )}
                                           </div>
-                                          <p className="whitespace-pre-wrap">{msg.text}</p>
+                                          <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
                                         </div>
                                       ))}
                                     </div>
                                   ) : (
-                                    <div className="bg-white rounded-xl border border-slate-200 p-4 text-xs text-slate-500">
+                                    <div className="bg-[var(--surface)] rounded-xl border border-[var(--surface-border)] p-4 text-xs text-[var(--muted)]">
                                       No turn-by-turn transcript messages were persisted for this session.
                                     </div>
                                   )}
@@ -427,23 +426,23 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
 
                                 {/* Lifecycle Audit Trail */}
                                 <div className="space-y-2">
-                                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                                  <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">
                                     Call Lifecycle Events ({detail?.lifecycleEvents?.length ?? call.lifecycleEvents.length})
                                   </h4>
-                                  <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-2 max-h-64 overflow-y-auto">
+                                  <div className="bg-[var(--surface)] rounded-xl border border-[var(--surface-border)] p-3 space-y-2 max-h-64 overflow-y-auto">
                                     {(detail?.lifecycleEvents ?? call.lifecycleEvents).length > 0 ? (
                                       (detail?.lifecycleEvents ?? call.lifecycleEvents).map((ev) => (
                                         <div
                                           key={ev.id}
-                                          className="flex items-start justify-between gap-2 border-b border-slate-100 last:border-0 pb-2 last:pb-0 text-xs"
+                                          className="flex items-start justify-between gap-2 border-b border-[var(--surface-border)]/50 last:border-0 pb-2 last:pb-0 text-xs"
                                         >
                                           <div>
-                                            <span className="font-semibold text-slate-800">{ev.label}</span>
-                                            <span className="ml-2 text-[11px] font-mono text-slate-400">
+                                            <span className="font-semibold text-[var(--foreground)]">{ev.label}</span>
+                                            <span className="ml-2 text-[11px] font-mono text-[var(--muted)]">
                                               ({ev.lifecycleEvent || ev.eventType})
                                             </span>
                                           </div>
-                                          <span className="text-[11px] text-slate-400 font-mono shrink-0">
+                                          <span className="text-[11px] text-[var(--muted)] font-mono shrink-0">
                                             {new Date(ev.createdAt).toLocaleTimeString([], {
                                               hour: '2-digit',
                                               minute: '2-digit',
@@ -453,7 +452,7 @@ export function CallHistoryTable({ calls, isRealContractor, onRefresh }: CallHis
                                         </div>
                                       ))
                                     ) : (
-                                      <p className="text-xs text-slate-400 italic">No lifecycle events recorded.</p>
+                                      <p className="text-xs text-[var(--muted)] italic">No lifecycle events recorded.</p>
                                     )}
                                   </div>
                                 </div>

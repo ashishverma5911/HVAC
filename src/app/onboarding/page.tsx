@@ -763,10 +763,10 @@ export default function OnboardingPage() {
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200">
               <Sparkles className="h-3.5 w-3.5" />
-              <span>AERIS AI Contractor Onboarding</span>
+              <span>AERIS Receptionist Contractor Onboarding</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-              Set Up Your AI HVAC Receptionist
+              Set Up Your HVAC Receptionist
             </h1>
             <p className="text-xs text-slate-500">
               Step {currentStep} of 6 — {STEP_DEFINITIONS[currentStep - 1]?.subtitle}

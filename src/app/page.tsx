@@ -1,27 +1,26 @@
 import React from 'react';
-import { Navbar } from '@/components/landing/Navbar';
+import { AppShell } from '@/components/layout/AppShell';
 import { HeroSection } from '@/components/landing/HeroSection';
-import { TrustSection } from '@/components/landing/TrustSection';
 import { ReceptionistDemo } from '@/components/receptionist/ReceptionistDemo';
+import { TrustSection } from '@/components/landing/TrustSection';
 import { Footer } from '@/components/landing/Footer';
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-blue-600 selection:text-white">
-      {/* Header Navigation */}
-      <Navbar currentRoute="home" />
+    <AppShell pageTitle="Demo Preview" badge="INTERACTIVE">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Hero Section */}
+        <HeroSection />
 
-      {/* Hero Section */}
-      <HeroSection />
+        {/* Interactive Receptionist Demo (2-Column Workspace) */}
+        <ReceptionistDemo />
 
-      {/* Interactive AI Receptionist Demo */}
-      <ReceptionistDemo />
+        {/* Contractor Capabilities & Trust */}
+        <TrustSection />
 
-      {/* Trust & Capabilities Section */}
-      <TrustSection />
-
-      {/* Footer */}
-      <Footer />
-    </div>
+        {/* Footer */}
+        <Footer />
+      </div>
+    </AppShell>
   );
 }

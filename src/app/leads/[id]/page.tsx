@@ -25,8 +25,7 @@ import {
   Send,
   ClipboardList,
 } from 'lucide-react';
-import { Navbar } from '@/components/landing/Navbar';
-import { Footer } from '@/components/landing/Footer';
+import { AppShell } from '@/components/layout/AppShell';
 
 const APPOINTMENT_CONFIRMATION_REQUIRED_MESSAGE =
   'Appointment requested — contractor confirmation required.';
@@ -443,43 +442,37 @@ export default function LeadDetailPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col bg-slate-50">
-        <Navbar currentRoute="dashboard" />
-        <main className="flex-1 flex items-center justify-center py-20">
-          <div className="text-center">
-            <Loader2 className="h-10 w-10 text-blue-600 animate-spin mx-auto mb-3" />
-            <p className="text-sm font-medium text-slate-600">Loading lead record...</p>
-          </div>
-        </main>
-        <Footer />
-      </div>
+      <AppShell pageTitle="Lead Details" badge="LOADING">
+        <div className="py-20 flex flex-col items-center justify-center">
+          <Loader2 className="h-10 w-10 text-blue-500 animate-spin mb-3" />
+          <p className="text-sm font-medium text-[var(--muted)]">Loading lead record...</p>
+        </div>
+      </AppShell>
     );
   }
 
   if (error || !lead) {
     return (
-      <div className="min-h-screen flex flex-col bg-slate-50">
-        <Navbar currentRoute="dashboard" />
-        <main className="flex-1 flex items-center justify-center py-20 px-4">
-          <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-8 text-center space-y-4 shadow-2xs">
-            <div className="h-12 w-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto">
+      <AppShell pageTitle="Lead Details" badge="ERROR">
+        <div className="py-20 flex flex-col items-center justify-center px-4">
+          <div className="max-w-md w-full bg-[var(--surface)] border border-[var(--surface-border)] rounded-2xl p-8 text-center space-y-4 shadow-sm">
+            <div className="h-12 w-12 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mx-auto">
               <AlertTriangle className="h-6 w-6" />
             </div>
-            <h2 className="text-lg font-bold text-slate-900">Record Unavailable</h2>
-            <p className="text-xs text-slate-600">{error || 'Lead could not be found.'}</p>
+            <h2 className="text-lg font-bold text-[var(--foreground)]">Record Unavailable</h2>
+            <p className="text-xs text-[var(--muted)]">{error || 'Lead could not be found.'}</p>
             <div className="pt-2">
               <Link
                 href="/leads"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-cyan-400 hover:underline"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 <span>Return to Leads List</span>
               </Link>
             </div>
           </div>
-        </main>
-        <Footer />
-      </div>
+        </div>
+      </AppShell>
     );
   }
 
@@ -489,11 +482,8 @@ export default function LeadDetailPage({
   const humanEscalation = lead.human_escalation || null;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
-      <Navbar currentRoute="dashboard" />
-
-      <main className="flex-1 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+    <AppShell pageTitle={`Lead: ${displayCustomerName}`} badge="CRM LEAD">
+      <div className="max-w-7xl mx-auto space-y-6">
           {/* Breadcrumb & Navigation */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
             <div>
@@ -1142,9 +1132,6 @@ export default function LeadDetailPage({
             </div>
           </div>
         </div>
-      </main>
-
-      <Footer />
-    </div>
+    </AppShell>
   );
 }

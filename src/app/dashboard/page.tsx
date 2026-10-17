@@ -3,15 +3,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Navbar } from '@/components/landing/Navbar';
-import { Footer } from '@/components/landing/Footer';
+import { AppShell } from '@/components/layout/AppShell';
 import { MetricCards } from '@/components/dashboard/MetricCards';
 import { RecentLeadsTable } from '@/components/dashboard/RecentLeadsTable';
 import { CallHistoryTable } from '@/components/dashboard/CallHistoryTable';
 import { mockDashboardMetrics, mockRecentLeads } from '@/mock/dashboardData';
 import { DashboardLead, DashboardMetrics } from '@/types';
 import type { ContractorCallHistoryItem } from '@/lib/services/contractorPersistence';
-import { ArrowLeft, LogOut, CheckCircle2, Loader2, PhoneCall, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, LogOut, CheckCircle2, Loader2, PhoneCall, AlertCircle, RefreshCw, Users, Settings } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function DashboardPage() {
@@ -109,153 +108,154 @@ export default function DashboardPage() {
     }
   };
 
-  const businessTitle = authStatus?.businessName || (authStatus?.authenticated ? 'Contractor Dashboard' : 'Summit HVAC Preview Dashboard');
-  const isRealContractor = authStatus?.authenticated && authStatus?.hasBusiness;
+  const businessTitle =
+    authStatus?.businessName ||
+    (authStatus?.authenticated ? 'Contractor Dashboard' : 'Summit HVAC Preview Dashboard');
+  const isRealContractor = Boolean(authStatus?.authenticated && authStatus?.hasBusiness);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
-      <Navbar currentRoute="dashboard" />
-
-      <main className="flex-1 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-          {/* Top Header Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Link
-                  href="/"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-blue-600 transition"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                  <span>Back to Receptionist Demo</span>
-                </Link>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                  {businessTitle}
-                </h1>
-                {isRealContractor ? (
-                  <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    <span>Pilot Live Context</span>
-                  </span>
-                ) : (
-                  <span className="text-xs bg-blue-100 text-blue-800 font-semibold px-2.5 py-0.5 rounded-full border border-blue-200">
-                    Dallas, TX
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Live oversight of inbound AI receptionist calls, lead qualification, and technician dispatch queues.
-                {authStatus?.user?.email && ` (Logged in as ${authStatus.user.email})`}
-              </p>
+    <AppShell
+      pageTitle="Contractor Dashboard"
+      badge={isRealContractor ? 'PILOT ACTIVE' : 'DEMO PREVIEW'}
+    >
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Top Header Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-6 rounded-2xl bg-[var(--surface)] border border-[var(--surface-border)] shadow-sm">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--muted)] hover:text-blue-500 transition"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>Switch to Demo Preview</span>
+              </Link>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-[var(--foreground)] tracking-tight">
+                {businessTitle}
+              </h1>
               {isRealContractor ? (
-                <>
-                  <Link
-                    href="/leads"
-                    className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg shadow-2xs transition inline-flex items-center gap-1"
-                  >
-                    <span>Leads Workspace</span>
-                  </Link>
-                  <Link
-                    href="/settings"
-                    className="text-xs font-medium text-slate-600 hover:text-blue-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs transition"
-                  >
-                    Contractor Settings
-                  </Link>
-                  <button
-                    onClick={handleSignOut}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg transition"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                    <span>Sign Out</span>
-                  </button>
-                </>
+                <span className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold px-2.5 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3 w-3" />
+                  <span>Pilot Live Context</span>
+                </span>
               ) : (
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs">
-                    Demo Preview
-                  </span>
-                  <Link
-                    href="/login"
-                    className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition shadow-2xs"
-                  >
-                    Contractor Sign In
-                  </Link>
-                </div>
+                <span className="text-xs bg-blue-500/10 text-blue-600 dark:text-cyan-400 font-semibold px-2.5 py-0.5 rounded-full border border-blue-500/20">
+                  Dallas, TX
+                </span>
               )}
             </div>
+            <p className="text-xs text-[var(--muted)] mt-1">
+              Live oversight of inbound AI receptionist calls, lead qualification, and technician dispatch queues.
+              {authStatus?.user?.email && ` (Logged in as ${authStatus.user.email})`}
+            </p>
           </div>
 
-          {/* Error Banner with Retry */}
-          {loadError && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
-                <p className="text-xs text-red-700 font-medium">{loadError}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            {isRealContractor ? (
+              <>
+                <Link
+                  href="/leads"
+                  className="text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 px-3 py-1.5 rounded-xl shadow-sm transition inline-flex items-center gap-1.5"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  <span>Leads Workspace</span>
+                </Link>
+                <Link
+                  href="/settings"
+                  className="text-xs font-medium text-[var(--foreground)] bg-[var(--surface-raised)] border border-[var(--surface-border)] hover:bg-[var(--surface-border)] px-3 py-1.5 rounded-xl transition inline-flex items-center gap-1.5"
+                >
+                  <Settings className="h-3.5 w-3.5 text-[var(--muted)]" />
+                  <span>Contractor Settings</span>
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-3 py-1.5 rounded-xl transition"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono text-[var(--muted)] bg-[var(--surface-raised)] border border-[var(--surface-border)] px-3 py-1.5 rounded-xl">
+                  Demo Preview
+                </span>
+                <Link
+                  href="/login"
+                  className="text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 px-3.5 py-1.5 rounded-xl transition shadow-sm"
+                >
+                  Contractor Sign In
+                </Link>
               </div>
-              <button
-                onClick={loadDashboard}
-                className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-red-700 hover:text-red-800 bg-white border border-red-200 px-3 py-1.5 rounded-lg shadow-2xs transition shrink-0"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                <span>Retry</span>
-              </button>
-            </div>
-          )}
-
-          {/* Metric KPIs */}
-          {loadingData ? (
-            <div className="py-16 flex flex-col justify-center items-center gap-3">
-              <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
-              <p className="text-xs text-slate-500">Loading contractor metrics...</p>
-            </div>
-          ) : (
-            <>
-              <MetricCards metrics={metrics} />
-
-              {/* Zero-State for Fresh Contractors */}
-              {isRealContractor && leads.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-4 shadow-xs">
-                  <div className="h-12 w-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
-                    <PhoneCall className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">No Inbound Leads Yet</h3>
-                    <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
-                      Your AERIS AI Receptionist is configured and ready. Inbound customer calls and chats will be
-                      automatically qualified, recorded, and dispatched here.
-                    </p>
-                  </div>
-                  <Link
-                    href="/#interactive-demo"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition"
-                  >
-                    <PhoneCall className="h-3.5 w-3.5" />
-                    <span>Test Inbound Intake</span>
-                  </Link>
-                </div>
-              ) : (
-                /* Recent Leads Table */
-                <RecentLeadsTable leads={leads} isRealContractor={Boolean(isRealContractor)} />
-              )}
-
-              {/* Inbound Call History, Transcripts, Lifecycle Audit Trail, and Privacy Safeguards */}
-              <CallHistoryTable
-                calls={calls}
-                isRealContractor={Boolean(isRealContractor)}
-                onRefresh={loadDashboard}
-              />
-            </>
-          )}
+            )}
+          </div>
         </div>
-      </main>
 
-      <Footer />
-    </div>
+        {/* Error Banner with Retry */}
+        {loadError && (
+          <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-rose-500 shrink-0" />
+              <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">{loadError}</p>
+            </div>
+            <button
+              onClick={loadDashboard}
+              className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 bg-[var(--surface)] border border-rose-500/30 px-3 py-1.5 rounded-xl shadow-xs transition shrink-0"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>Retry</span>
+            </button>
+          </div>
+        )}
+
+        {/* Metric KPIs */}
+        {loadingData ? (
+          <div className="py-16 flex flex-col justify-center items-center gap-3">
+            <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
+            <p className="text-xs text-[var(--muted)]">Loading contractor metrics...</p>
+          </div>
+        ) : (
+          <>
+            <MetricCards metrics={metrics} />
+
+            {/* Zero-State for Fresh Contractors */}
+            {isRealContractor && leads.length === 0 ? (
+              <div className="bg-[var(--surface)] rounded-2xl border border-[var(--surface-border)] p-8 text-center space-y-4 shadow-sm">
+                <div className="h-12 w-12 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-cyan-400 flex items-center justify-center mx-auto border border-blue-500/20">
+                  <PhoneCall className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[var(--foreground)]">No Inbound Leads Yet</h3>
+                  <p className="text-xs text-[var(--muted)] max-w-md mx-auto mt-1 leading-relaxed">
+                    Your AERIS Receptionist is configured and ready. Inbound customer calls and chats will be
+                    automatically qualified, recorded, and dispatched here.
+                  </p>
+                </div>
+                <Link
+                  href="/#interactive-demo"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white text-xs font-semibold hover:from-blue-500 hover:to-cyan-500 transition shadow-sm"
+                >
+                  <PhoneCall className="h-3.5 w-3.5" />
+                  <span>Test Inbound Intake</span>
+                </Link>
+              </div>
+            ) : (
+              /* Recent Leads Table */
+              <RecentLeadsTable leads={leads} isRealContractor={Boolean(isRealContractor)} />
+            )}
+
+            {/* Inbound Call History, Transcripts, Lifecycle Audit Trail, and Privacy Safeguards */}
+            <CallHistoryTable
+              calls={calls}
+              isRealContractor={Boolean(isRealContractor)}
+              onRefresh={loadDashboard}
+            />
+          </>
+        )}
+      </div>
+    </AppShell>
   );
 }

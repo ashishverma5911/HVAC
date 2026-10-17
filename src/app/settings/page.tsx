@@ -23,8 +23,7 @@ import {
   PhoneCall,
   RefreshCw,
 } from 'lucide-react';
-import { Navbar } from '@/components/landing/Navbar';
-import { Footer } from '@/components/landing/Footer';
+import { AppShell } from '@/components/layout/AppShell';
 import { validateSettingsInput } from '@/lib/validation/contractorSettings';
 import {
   SUPPORTED_VOICE_LANGUAGES,
@@ -463,25 +462,18 @@ export default function ContractorSettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col bg-slate-50">
-        <Navbar currentRoute="dashboard" />
-        <main className="flex-1 flex items-center justify-center py-20">
-          <div className="text-center">
-            <Loader2 className="h-10 w-10 text-blue-600 animate-spin mx-auto mb-3" />
-            <p className="text-sm font-medium text-slate-600">Loading business configuration...</p>
-          </div>
-        </main>
-        <Footer />
-      </div>
+      <AppShell pageTitle="Contractor Settings" badge="LOADING">
+        <div className="py-20 flex flex-col items-center justify-center">
+          <Loader2 className="h-10 w-10 text-blue-500 animate-spin mb-3" />
+          <p className="text-sm font-medium text-[var(--muted)]">Loading business configuration...</p>
+        </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
-      <Navbar currentRoute="dashboard" />
-
-      <main className="flex-1 py-8">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+    <AppShell pageTitle="Contractor Business Settings" badge="BUSINESS CONFIG">
+      <div className="max-w-4xl mx-auto space-y-6">
           {/* Header Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
             <div>
@@ -1401,10 +1393,7 @@ export default function ContractorSettingsPage() {
               </button>
             </div>
           </form>
-        </div>
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </AppShell>
   );
 }

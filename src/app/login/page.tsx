@@ -4,7 +4,8 @@ import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Bot, Mail, Lock, AlertCircle, ArrowRight, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react';
+import { Bot, Mail, Lock, AlertCircle, ArrowRight, CheckCircle2, Loader2, ArrowLeft, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { useTheme } from '@/lib/context/ThemeContext';
 
 function LoginContent() {
   const router = useRouter();
@@ -25,6 +26,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const { theme, toggleTheme } = useTheme();
 
   // Check if Supabase client can be initialized
   const [clientAvailable, setClientAvailable] = useState<boolean>(true);
@@ -58,16 +60,8 @@ function LoginContent() {
           return;
         }
 
-        if (data.user) {
-          // Check if user has an associated business profile
-          const statusRes = await fetch('/api/auth/status');
-          const statusData = await statusRes.json();
-
-          if (statusData.hasBusiness) {
-            router.push(redirectTarget);
-          } else {
-            router.push('/onboarding');
-          }
+        if (data.session) {
+          router.push(redirectTarget);
           router.refresh();
         }
       } else {
@@ -77,7 +71,7 @@ function LoginContent() {
           password,
           options: {
             data: {
-              full_name: fullName.trim() || undefined,
+              full_name: fullName.trim(),
             },
           },
         });
@@ -89,7 +83,6 @@ function LoginContent() {
         }
 
         if (data.session) {
-          // Automatic session created (email confirmation disabled in Supabase or dev)
           setSuccessMessage('Account created successfully! Redirecting to setup...');
           setTimeout(() => {
             router.push('/onboarding');
@@ -110,37 +103,53 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        {/* Back Link */}
-        <div className="mb-6 flex justify-start">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 transition"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Back to Receptionist Demo</span>
-          </Link>
-        </div>
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative">
+      {/* Subtle background glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
+      {/* Top Controls: Back & Theme Toggle */}
+      <div className="sm:mx-auto sm:w-full sm:max-w-md mb-6 flex items-center justify-between">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--muted)] hover:text-[var(--foreground)] transition"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>Back to Demo Preview</span>
+        </Link>
+
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-xl text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-raised)] transition"
+          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+        >
+          {theme === 'dark' ? (
+            <Sun className="h-4 w-4 text-amber-400" />
+          ) : (
+            <Moon className="h-4 w-4 text-indigo-500" />
+          )}
+        </button>
+      </div>
+
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Brand Header */}
         <div className="flex justify-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md">
-            <Bot className="h-7 w-7" />
+          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25">
+            <Bot className="h-8 w-8" />
+            <span className="absolute -inset-1 rounded-2xl bg-cyan-400 opacity-20 blur-xs" />
           </div>
         </div>
-        <h2 className="mt-4 text-center text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-          AERIS AI Receptionist
+        <h2 className="mt-4 text-center text-2xl sm:text-3xl font-extrabold text-[var(--foreground)] tracking-tight">
+          AERIS Receptionist
         </h2>
-        <p className="mt-1 text-center text-sm text-slate-500">
-          Contractor Portal — Manage your AI receptionist, leads, and dispatch.
+        <p className="mt-1 text-center text-xs sm:text-sm text-[var(--muted)]">
+          Contractor Portal &mdash; Manage your AI receptionist, leads, and dispatch.
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-sm sm:rounded-2xl sm:px-10 border border-slate-200">
+      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-[var(--surface)] py-8 px-6 shadow-xl rounded-2xl sm:px-10 border border-[var(--surface-border)]">
           {/* Mode Switcher Tabs */}
-          <div className="flex rounded-lg bg-slate-100 p-1 mb-6">
+          <div className="flex rounded-xl bg-[var(--surface-raised)] p-1 mb-6 border border-[var(--surface-border)]">
             <button
               type="button"
               onClick={() => {
@@ -148,10 +157,10 @@ function LoginContent() {
                 setErrorMessage(null);
                 setSuccessMessage(null);
               }}
-              className={`w-1/2 py-2 text-xs font-bold rounded-md transition ${
+              className={`w-1/2 py-2 text-xs font-bold rounded-lg transition ${
                 mode === 'signin'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
               }`}
             >
               Sign In
@@ -163,10 +172,10 @@ function LoginContent() {
                 setErrorMessage(null);
                 setSuccessMessage(null);
               }}
-              className={`w-1/2 py-2 text-xs font-bold rounded-md transition ${
+              className={`w-1/2 py-2 text-xs font-bold rounded-lg transition ${
                 mode === 'signup'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-[var(--muted)] hover:text-[var(--foreground)]'
               }`}
             >
               Register New Contractor
@@ -174,22 +183,22 @@ function LoginContent() {
           </div>
 
           {!clientAvailable && (
-            <div className="mb-4 rounded-lg bg-amber-50 p-3 border border-amber-200 text-amber-800 text-xs">
+            <div className="mb-4 rounded-xl bg-amber-500/10 p-3.5 border border-amber-500/25 text-amber-700 dark:text-amber-300 text-xs">
               <strong>Notice:</strong> Supabase environment variables are not configured in this environment.
               Demo sandbox mode is available on the home page.
             </div>
           )}
 
           {errorMessage && (
-            <div className="mb-4 rounded-lg bg-red-50 p-3.5 border border-red-200 flex items-start gap-2.5 text-red-800 text-xs">
-              <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+            <div className="mb-4 rounded-xl bg-rose-500/10 p-3.5 border border-rose-500/25 flex items-start gap-2.5 text-rose-600 dark:text-rose-400 text-xs">
+              <AlertCircle className="h-4 w-4 text-rose-500 mt-0.5 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {successMessage && (
-            <div className="mb-4 rounded-lg bg-emerald-50 p-3.5 border border-emerald-200 flex items-start gap-2.5 text-emerald-800 text-xs">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+            <div className="mb-4 rounded-xl bg-emerald-500/10 p-3.5 border border-emerald-500/25 flex items-start gap-2.5 text-emerald-600 dark:text-emerald-400 text-xs">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
               <span>{successMessage}</span>
             </div>
           )}
@@ -197,7 +206,7 @@ function LoginContent() {
           <form className="space-y-4" onSubmit={handleSubmit}>
             {mode === 'signup' && (
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-[var(--foreground)] mb-1.5">
                   Full Name
                 </label>
                 <input
@@ -206,18 +215,18 @@ function LoginContent() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. John Doe"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-600 focus:outline-hidden focus:ring-1 focus:ring-blue-600 transition"
+                  className="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] px-3.5 py-2 text-sm text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
                 />
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label className="block text-xs font-semibold text-[var(--foreground)] mb-1.5">
                 Email Address
               </label>
               <div className="relative">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <Mail className="h-4 w-4 text-slate-400" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                  <Mail className="h-4 w-4 text-[var(--muted)]" />
                 </div>
                 <input
                   type="email"
@@ -225,18 +234,18 @@ function LoginContent() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="contractor@example.com"
-                  className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-600 focus:outline-hidden focus:ring-1 focus:ring-blue-600 transition"
+                  className="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] pl-10 pr-3.5 py-2 text-sm text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
+              <label className="block text-xs font-semibold text-[var(--foreground)] mb-1.5">
                 Password
               </label>
               <div className="relative">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <Lock className="h-4 w-4 text-slate-400" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                  <Lock className="h-4 w-4 text-[var(--muted)]" />
                 </div>
                 <input
                   type="password"
@@ -245,19 +254,19 @@ function LoginContent() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-600 focus:outline-hidden focus:ring-1 focus:ring-blue-600 transition"
+                  className="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] pl-10 pr-3.5 py-2 text-sm text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 focus:ring-blue-500 transition"
                 />
               </div>
               {mode === 'signup' && (
-                <p className="text-[11px] text-slate-500 mt-1">Must be at least 6 characters.</p>
+                <p className="text-[11px] text-[var(--muted)] mt-1">Must be at least 6 characters.</p>
               )}
             </div>
 
-            <div>
+            <div className="pt-2">
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 py-2.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/25 hover:from-blue-500 hover:to-cyan-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <>
@@ -279,10 +288,10 @@ function LoginContent() {
             </div>
           </form>
 
-          <div className="mt-6 border-t border-slate-100 pt-4 text-center">
-            <p className="text-xs text-slate-500">
+          <div className="mt-6 border-t border-[var(--surface-border)] pt-4 text-center">
+            <p className="text-xs text-[var(--muted)]">
               Testing the public receptionist?{' '}
-              <Link href="/" className="font-semibold text-blue-600 hover:text-blue-500">
+              <Link href="/" className="font-semibold text-blue-600 dark:text-cyan-400 hover:underline">
                 Go to Public Demo Sandbox &rarr;
               </Link>
             </p>
@@ -297,8 +306,8 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+        <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
+          <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
         </div>
       }
     >

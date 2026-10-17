@@ -31,7 +31,7 @@ const initialEmptyCustomerInfo: CustomerInfo = {
 };
 
 const INITIAL_AI_GREETING =
-  "Hi, you've reached Summit HVAC. I'm AERIS, your AI receptionist. How can I help you today?";
+  "Hi, you've reached Summit HVAC. I'm AERIS, your receptionist. How can I help you today?";
 
 export const ReceptionistDemo: React.FC = () => {
   const [activeScenarioId, setActiveScenarioId] = useState<string>(demoScenarios[0].id);
@@ -79,6 +79,10 @@ export const ReceptionistDemo: React.FC = () => {
   const [leadStatus, setLeadStatus] = useState<LeadStatus>('new');
   const [detectedIntent, setDetectedIntent] = useState<string>(activeScenario.detectedIntent);
   const [activeMode, setActiveMode] = useState<'browser' | 'telephony'>('browser');
+
+  // Manual action loading states
+  const [isCreatingLead, setIsCreatingLead] = useState<boolean>(false);
+  const [isRequestingAppt, setIsRequestingAppt] = useState<boolean>(false);
 
   // Mutable refs to prevent stale closures in async voice callbacks
   const customerInfoRef = useRef<CustomerInfo>(initialEmptyCustomerInfo);
@@ -163,6 +167,68 @@ export const ReceptionistDemo: React.FC = () => {
     }
   }, []);
 
+  // Manual contextual action: Create Lead
+  const handleManualCreateLead = async () => {
+    if (isCreatingLead || leadId) return;
+    setIsCreatingLead(true);
+    try {
+      const res = await fetch('/api/receptionist/tools', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          toolName: 'create_lead',
+          args: {
+            customerName: customerInfo.name || 'Caller',
+            phone: customerInfo.phone || 'Phone pending',
+            serviceAddress: customerInfo.serviceAddress || customerInfo.cityOrArea || 'Address pending',
+            serviceType: customerInfo.serviceType || 'HVAC Service',
+            reportedIssue: customerInfo.problemDescription || 'General HVAC Service Request',
+            urgency: customerInfo.urgency || 'normal',
+          },
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.action) {
+        handleActionExecuted(data.action);
+      }
+    } catch (err) {
+      console.error('Failed to manually create lead:', err);
+    } finally {
+      setIsCreatingLead(false);
+    }
+  };
+
+  // Manual contextual action: Request Appointment
+  const handleManualRequestAppointment = async () => {
+    if (isRequestingAppt || appointmentId) return;
+    setIsRequestingAppt(true);
+    try {
+      const res = await fetch('/api/receptionist/tools', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          toolName: 'request_appointment',
+          args: {
+            leadId: leadId || undefined,
+            preferredSlot: customerInfo.preferredAppointmentTime || 'Next Available Slot',
+            serviceType: customerInfo.serviceType || 'HVAC Service',
+            notes: customerInfo.problemDescription || 'Requested via Receptionist Panel',
+          },
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.action) {
+        handleActionExecuted(data.action);
+      }
+    } catch (err) {
+      console.error('Failed to manually request appointment:', err);
+    } finally {
+      setIsRequestingAppt(false);
+    }
+  };
+
   // Initialize LiveVoiceManager on mount
   useEffect(() => {
     const manager = new LiveVoiceManager({
@@ -184,11 +250,12 @@ export const ReceptionistDemo: React.FC = () => {
       onFinalUserUtterance: (utterance) => {
         customerUtterancesRef.current.push(utterance);
         const fullCustomerText = customerUtterancesRef.current.join(' ');
-        const { customerInfo: extractedInfo, leadStatus: newLeadStatus, intent } = extractStructuredCustomerData(
-          fullCustomerText,
-          customerInfoRef.current,
-          leadStatusRef.current
-        );
+        const { customerInfo: extractedInfo, leadStatus: newLeadStatus, intent } =
+          extractStructuredCustomerData(
+            fullCustomerText,
+            customerInfoRef.current,
+            leadStatusRef.current
+          );
         if (intent && intent !== 'UNKNOWN') {
           setDetectedIntent(intent);
         }
@@ -227,11 +294,12 @@ export const ReceptionistDemo: React.FC = () => {
         // Run real-time structured extraction on customer speech
         if (turn.speaker === 'customer') {
           const candidateText = [...customerUtterancesRef.current, turn.text].join(' ');
-          const { customerInfo: interimInfo, leadStatus: interimLeadStatus, intent } = extractStructuredCustomerData(
-            candidateText,
-            customerInfoRef.current,
-            leadStatusRef.current
-          );
+          const { customerInfo: interimInfo, leadStatus: interimLeadStatus, intent } =
+            extractStructuredCustomerData(
+              candidateText,
+              customerInfoRef.current,
+              leadStatusRef.current
+            );
           if (intent && intent !== 'UNKNOWN') {
             setDetectedIntent(intent);
           }
@@ -431,73 +499,73 @@ export const ReceptionistDemo: React.FC = () => {
     voiceState === 'MUTED';
 
   return (
-    <section id="interactive-demo" className="py-12 bg-slate-100/70 border-b border-slate-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="interactive-demo" className="py-8 bg-transparent">
+      <div className="max-w-7xl mx-auto space-y-6">
         {/* Section Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 p-6 rounded-2xl bg-[var(--surface)] border border-[var(--surface-border)] shadow-sm">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold mb-2 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping" />
-              <span>Live Voice Agent (Interactive)</span>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-semibold mb-2.5 border border-emerald-500/20">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Interactive Multimodal Dispatcher</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              AERIS AI Receptionist Live Voice &amp; Chat Simulator
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-[var(--foreground)] tracking-tight">
+              AERIS Receptionist Live Voice &amp; Chat Simulator
             </h2>
-            <p className="mt-1 text-sm text-slate-600 max-w-2xl">
+            <p className="mt-1.5 text-xs sm:text-sm text-[var(--muted)] max-w-2xl leading-relaxed">
               Speak naturally through your microphone with{' '}
-              <strong className="text-slate-900">
+              <strong className="text-[var(--foreground)] font-semibold">
                 {activeContractorConfig?.name || 'Summit HVAC'}
               </strong>
-              &apos;s real-time voice agent powered by AERIS Voice, or type customer inquiries to test.
+              &apos;s real-time receptionist powered by AERIS Voice, or type customer inquiries to test.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500 font-mono">
-              Voice: <strong className="text-emerald-700">AERIS Voice</strong>
+            <span className="text-xs text-[var(--muted)] font-mono">
+              Voice Engine: <strong className="text-emerald-500 font-semibold">AERIS Voice</strong>
             </span>
-            <span className="text-slate-300">|</span>
-            <span className="text-xs text-slate-500 font-mono">
-              Intelligence: <strong className="text-slate-700">AERIS AI</strong>
+            <span className="text-[var(--surface-border)]">|</span>
+            <span className="text-xs text-[var(--muted)] font-mono">
+              Model: <strong className="text-cyan-500 font-semibold">AERIS Core</strong>
             </span>
           </div>
         </div>
 
         {/* Mode Selector Tabs */}
-        <div className="flex border-b border-slate-200 mb-6 gap-2">
+        <div className="flex border-b border-[var(--surface-border)] gap-3 px-1">
           <button
             onClick={() => setActiveMode('browser')}
-            className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
+            className={`pb-3 px-4 text-xs sm:text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
               activeMode === 'browser'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'border-blue-500 text-blue-600 dark:text-cyan-400'
+                : 'border-transparent text-[var(--muted)] hover:text-[var(--foreground)]'
             }`}
           >
             <span>🎙️</span>
             <span>Browser Voice &amp; Chat</span>
-            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-              Interactive
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border border-emerald-500/20">
+              Active
             </span>
           </button>
 
           <button
             onClick={() => setActiveMode('telephony')}
-            className={`pb-3 px-4 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
+            className={`pb-3 px-4 text-xs sm:text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
               activeMode === 'telephony'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'border-blue-500 text-blue-600 dark:text-cyan-400'
+                : 'border-transparent text-[var(--muted)] hover:text-[var(--foreground)]'
             }`}
           >
             <span>📞</span>
             <span>Inbound Phone Bridge</span>
-            <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-              PSTN Bridge
+            <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border border-blue-500/20">
+              PSTN Gateway
             </span>
           </button>
         </div>
 
         {/* Lead Status Stepper Banner */}
-        <div className="mb-6">
+        <div>
           <LeadStatusBadge
             status={leadStatus}
             detectedIntent={detectedIntent}
@@ -539,7 +607,16 @@ export const ReceptionistDemo: React.FC = () => {
 
             {/* Right Column: Customer Info Panel, Agent Actions, Business Info Panel (5 cols) */}
             <div className="lg:col-span-5 space-y-6">
-              <CustomerInfoPanel info={customerInfo} leadId={leadId} appointmentId={appointmentId} />
+              <CustomerInfoPanel
+                info={customerInfo}
+                leadId={leadId}
+                appointmentId={appointmentId}
+                leadStatus={leadStatus}
+                onCreateLead={handleManualCreateLead}
+                onRequestAppointment={handleManualRequestAppointment}
+                isCreatingLead={isCreatingLead}
+                isRequestingAppt={isRequestingAppt}
+              />
               <AgentActionsPanel actions={executedActions} leadId={leadId} appointmentId={appointmentId} />
               <BusinessInfoPanel config={activeContractorConfig} isDemo={isDemoContext} />
             </div>
@@ -547,14 +624,23 @@ export const ReceptionistDemo: React.FC = () => {
         ) : (
           /* 2-Column Main Demo Grid - Telephony Bridge Mode */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Column: Twilio Telephony Bridge Controller (7 cols) */}
+            {/* Left Column: Telephony Bridge Controller (7 cols) */}
             <div className="lg:col-span-7 space-y-6">
               <TelephonyPanel />
             </div>
 
             {/* Right Column: Real-time extracted info & actions (5 cols) */}
             <div className="lg:col-span-5 space-y-6">
-              <CustomerInfoPanel info={customerInfo} leadId={leadId} appointmentId={appointmentId} />
+              <CustomerInfoPanel
+                info={customerInfo}
+                leadId={leadId}
+                appointmentId={appointmentId}
+                leadStatus={leadStatus}
+                onCreateLead={handleManualCreateLead}
+                onRequestAppointment={handleManualRequestAppointment}
+                isCreatingLead={isCreatingLead}
+                isRequestingAppt={isRequestingAppt}
+              />
               <AgentActionsPanel actions={executedActions} leadId={leadId} appointmentId={appointmentId} />
               <BusinessInfoPanel config={activeContractorConfig} isDemo={isDemoContext} />
             </div>

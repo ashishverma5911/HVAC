@@ -32,7 +32,6 @@ export const BusinessInfoPanel: React.FC<BusinessInfoPanelProps> = ({
         config.businessHours.saturday ? ` | Sat: ${config.businessHours.saturday}` : ''
       }${config.businessHours.sunday ? ` | Sun: ${config.businessHours.sunday}` : ''}`
     : summitHvacProfile.businessHours;
-  const emergencyEnabled = config ? config.emergencyServiceEnabled : true;
   const emergencySummary = config
     ? config.emergencyServiceEnabled
       ? config.afterHoursInstructions || 'Available (24/7 Priority On-Call)'
@@ -40,127 +39,65 @@ export const BusinessInfoPanel: React.FC<BusinessInfoPanelProps> = ({
     : 'Available (24/7 Priority On-Call)';
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
-      <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+    <div className="rounded-2xl border p-5 transition-colors duration-200
+      bg-[var(--surface)] text-[var(--foreground)] border-[var(--surface-border)] shadow-xs
+    ">
+      <div className="flex items-center justify-between pb-3.5 border-b border-[var(--surface-border)] mb-4">
         <div className="flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-blue-600" />
-          <h3 className="text-sm font-bold text-slate-900">
-            Business Information Panel
-          </h3>
+          <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-cyan-400">
+            <Building2 className="h-4 w-4" />
+          </div>
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground)]">
+              Contractor Context
+            </h3>
+            <p className="text-[10px] text-[var(--muted)]">Active Business Rules</p>
+          </div>
         </div>
-        <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-          {isDemo ? 'Summit HVAC Profile' : 'Active Contractor Profile'}
+
+        <span className="text-[10px] font-semibold text-blue-600 dark:text-cyan-400 bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20">
+          {isDemo ? 'Summit HVAC Pilot' : 'Active Contractor'}
         </span>
       </div>
 
-      <div className="space-y-3.5 text-xs text-slate-700">
+      <div className="space-y-3 text-xs text-[var(--foreground)]">
         {/* Business Name & Tagline */}
-        <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500 text-[11px] font-medium">Business:</span>
-            <span className="font-bold text-slate-900 text-sm">{businessName}</span>
+        <div className="p-2.5 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)]">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[var(--muted)] text-[10px] font-medium uppercase tracking-wider">Business Name</span>
+            <span className="text-[10px] text-emerald-500 flex items-center gap-1 font-semibold">
+              <ShieldCheck className="h-3 w-3" />
+              <span>Verified Intake</span>
+            </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            {isDemo
-              ? summitHvacProfile.tagline
-              : `Configured AI Receptionist Profile${config?.timezone ? ` (${config.timezone})` : ''}`}
+          <p className="font-bold text-[var(--foreground)] text-sm">{businessName}</p>
+          <p className="text-[11px] text-[var(--muted)] mt-0.5">{locationText}</p>
+        </div>
+
+        {/* Territory / Service Areas */}
+        <div className="p-2.5 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)]">
+          <div className="flex items-center gap-1.5 text-[var(--muted)] mb-1 text-[10px] font-medium uppercase tracking-wider">
+            <Navigation className="h-3 w-3 text-blue-500" />
+            <span>Service Territory</span>
+          </div>
+          <p className="text-[var(--foreground)] text-[11px] leading-relaxed">
+            {serviceAreas.slice(0, 6).join(', ')}
+            {serviceAreas.length > 6 ? ` +${serviceAreas.length - 6} more` : ''}
           </p>
         </div>
 
-        {/* Location */}
-        <div className="flex items-start gap-2.5 p-2 rounded-md">
-          <MapPin className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-medium text-slate-500 block text-[11px]">Location:</span>
-            <span className="font-semibold text-slate-900">{locationText}</span>
+        {/* Operating Hours & Emergency */}
+        <div className="p-2.5 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)]">
+          <div className="flex items-center gap-1.5 text-[var(--muted)] mb-1 text-[10px] font-medium uppercase tracking-wider">
+            <Clock className="h-3 w-3 text-cyan-500" />
+            <span>Business Hours &amp; After-Hours</span>
           </div>
-        </div>
-
-        {/* Service Area */}
-        <div className="flex items-start gap-2.5 p-2 rounded-md">
-          <Navigation className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-medium text-slate-500 block text-[11px]">Service Area:</span>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {serviceAreas.map((city) => (
-                <span
-                  key={city}
-                  className="bg-slate-100 text-slate-700 text-[11px] px-2 py-0.5 rounded font-medium border border-slate-200"
-                >
-                  {city}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Services */}
-        <div className="flex items-start gap-2.5 p-2 rounded-md">
-          <Wrench className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-medium text-slate-500 block text-[11px]">Services:</span>
-            <ul className="mt-1 grid grid-cols-2 gap-1 text-[11px] font-medium text-slate-800">
-              {services.map((svc) => (
-                <li key={svc} className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                  <span>{svc}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        {/* Business Hours */}
-        <div className="flex items-start gap-2.5 p-2 rounded-md">
-          <Clock className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-medium text-slate-500 block text-[11px]">Business Hours:</span>
-            <span className="font-semibold text-slate-900">{hoursText}</span>
-          </div>
-        </div>
-
-        {/* Emergency Service */}
-        <div
-          className={`flex items-start gap-2.5 p-2 rounded-lg border ${
-            emergencyEnabled
-              ? 'bg-emerald-50/70 border-emerald-200/80'
-              : 'bg-amber-50/70 border-amber-200/80'
-          }`}
-        >
-          <ShieldCheck
-            className={`h-4 w-4 shrink-0 mt-0.5 ${
-              emergencyEnabled ? 'text-emerald-700' : 'text-amber-700'
-            }`}
-          />
-          <div>
-            <span
-              className={`font-bold block text-[11px] ${
-                emergencyEnabled ? 'text-emerald-900' : 'text-amber-900'
-              }`}
-            >
-              Emergency Service:
-            </span>
-            <span
-              className={`font-medium text-[11px] ${
-                emergencyEnabled ? 'text-emerald-800' : 'text-amber-800'
-              }`}
-            >
-              {emergencySummary}
-            </span>
-          </div>
-        </div>
-
-        {/* Notice */}
-        <div className="pt-2 border-t border-slate-100 flex items-start gap-2 text-[11px] text-slate-500">
-          <Info className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" />
-          <p className="italic">
-            {isDemo
-              ? 'Important: This is fictional demo information used to calibrate the receptionist AI system.'
-              : `Active server-verified receptionist configuration for ${businessName}.`}
+          <p className="text-[var(--foreground)] text-[11px] font-medium">{hoursText}</p>
+          <p className="text-amber-500 dark:text-amber-400 text-[10px] mt-1 font-semibold">
+            {emergencySummary}
           </p>
         </div>
       </div>
     </div>
   );
 };
-
