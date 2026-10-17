@@ -56,8 +56,9 @@ export function getAppBaseUrl(): string {
 /**
  * Constructs the absolute URL for the email verification callback endpoint (/auth/callback).
  * Guaranteed to use the production domain in production environments.
+ * Supports passing safe internal redirect targets and an email hint for pre-filling login forms.
  */
-export function getEmailCallbackUrl(nextPath?: string): string {
+export function getEmailCallbackUrl(nextPath?: string, email?: string): string {
   const base = getAppBaseUrl();
   const url = new URL('/auth/callback', base);
   if (nextPath) {
@@ -65,6 +66,9 @@ export function getEmailCallbackUrl(nextPath?: string): string {
     if (safeNext !== '/dashboard') {
       url.searchParams.set('next', safeNext);
     }
+  }
+  if (email && typeof email === 'string' && email.trim()) {
+    url.searchParams.set('email', email.trim().toLowerCase());
   }
   return url.toString();
 }

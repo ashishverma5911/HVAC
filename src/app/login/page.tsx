@@ -16,10 +16,11 @@ import {
   Sun,
   Moon,
   RefreshCw,
+  Info,
 } from 'lucide-react';
 import { useTheme } from '@/lib/context/ThemeContext';
 import { validateEmailAddress } from '@/lib/validation/emailValidation';
-import { getEmailCallbackUrl, sanitizeRedirectPath } from '@/lib/auth/redirectUrl';
+import { sanitizeRedirectPath } from '@/lib/auth/redirectUrl';
 
 function LoginContent() {
   const router = useRouter();
@@ -35,6 +36,7 @@ function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [neutralNotice, setNeutralNotice] = useState<string | null>(null);
 
   // Verification & Recovery State
   const [showResendUI, setShowResendUI] = useState(false);
@@ -57,18 +59,41 @@ function LoginContent() {
   // Inspect incoming URL query parameters for verification outcomes
   useEffect(() => {
     const verifiedParam = searchParams.get('verified');
+    const noticeParam = searchParams.get('notice');
+    const emailParam = searchParams.get('email');
     const errorParam = searchParams.get('error');
     const errorDescription = searchParams.get('error_description');
 
+    if (emailParam) {
+      setEmail((prev) => (prev ? prev : emailParam.trim()));
+    }
+
     if (verifiedParam === 'true') {
-      setSuccessMessage('Your email has been verified successfully! You can now sign in to your AERIS account.');
+      if (noticeParam === 'cross_device') {
+        setSuccessMessage(
+          'Your email has been verified successfully! Since you confirmed from a new device or browser, please enter your password to sign in.'
+        );
+      } else {
+        setSuccessMessage('Your email has been verified successfully! You can now sign in to your AERIS account.');
+      }
       setMode('signin');
+      setErrorMessage(null);
+      setNeutralNotice(null);
+    } else if (noticeParam === 'unverified_device') {
+      setNeutralNotice(
+        'Please sign in with your email and password. If your email has not been confirmed yet, you can request a new verification email below.'
+      );
+      setShowResendUI(true);
+      setMode('signin');
+      setSuccessMessage(null);
       setErrorMessage(null);
     } else if (errorParam === 'verification_failed') {
       const description =
         errorDescription || 'Your email verification link is invalid, has expired, or has already been used.';
       setErrorMessage(description);
       setShowResendUI(true);
+      setSuccessMessage(null);
+      setNeutralNotice(null);
     }
   }, [searchParams]);
 
@@ -131,6 +156,7 @@ function LoginContent() {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+    setNeutralNotice(null);
     setResendStatus(null);
 
     // 1. Frontend Email Syntax Validation
@@ -181,8 +207,6 @@ function LoginContent() {
         }
       } else {
         // Sign Up: Validate on server via /api/auth/register
-        const callbackUrl = getEmailCallbackUrl(redirectTarget);
-
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -280,6 +304,7 @@ function LoginContent() {
                 setMode('signin');
                 setErrorMessage(null);
                 setSuccessMessage(null);
+                setNeutralNotice(null);
               }}
               className={`w-1/2 py-2 text-xs font-bold rounded-lg transition ${
                 mode === 'signin'
@@ -295,6 +320,7 @@ function LoginContent() {
                 setMode('signup');
                 setErrorMessage(null);
                 setSuccessMessage(null);
+                setNeutralNotice(null);
               }}
               className={`w-1/2 py-2 text-xs font-bold rounded-lg transition ${
                 mode === 'signup'
@@ -310,6 +336,26 @@ function LoginContent() {
             <div className="mb-4 rounded-xl bg-amber-500/10 p-3.5 border border-amber-500/25 text-amber-700 dark:text-amber-300 text-xs">
               <strong>Notice:</strong> Supabase environment variables are not configured in this environment.
               Demo sandbox mode is available on the home page.
+            </div>
+          )}
+
+          {neutralNotice && (
+            <div className="mb-4 rounded-xl bg-blue-500/10 p-3.5 border border-blue-500/25 flex items-start gap-2.5 text-blue-600 dark:text-cyan-400 text-xs">
+              <Info className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p>{neutralNotice}</p>
+                {showResendUI && (
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={resendingEmail}
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-cyan-400 hover:underline disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${resendingEmail ? 'animate-spin' : ''}`} />
+                    <span>{resendingEmail ? 'Sending...' : 'Resend Verification Email'}</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

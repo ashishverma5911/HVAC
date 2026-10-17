@@ -438,7 +438,7 @@ export default function OnboardingPage() {
     try {
       const supabase = createClient();
       if (authMode === 'signup') {
-        const emailRedirectTo = getEmailCallbackUrl('/onboarding');
+        const emailRedirectTo = getEmailCallbackUrl('/onboarding', cleanEmail);
         const { data, error } = await supabase.auth.signUp({
           email: cleanEmail,
           password: authPasswordInput,

@@ -36,9 +36,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Construct Production Email Callback URL
+    // 2. Construct Production Email Callback URL (including email hint)
     const safeNext = sanitizeRedirectPath(next, '/dashboard');
-    const emailRedirectTo = getEmailCallbackUrl(safeNext);
+    const emailRedirectTo = getEmailCallbackUrl(safeNext, emailResult.normalizedEmail);
 
     // 3. Dispatch resend request to Supabase Auth
     const supabase = await createServerSupabaseClient();

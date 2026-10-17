@@ -50,9 +50,9 @@ export async function POST(req: NextRequest) {
     // 3. Name Sanitization
     const trimmedFullName = typeof fullName === 'string' ? fullName.trim() : '';
 
-    // 4. Construct Production Email Callback URL
+    // 4. Construct Production Email Callback URL (including email hint for seamless verification)
     const safeNext = sanitizeRedirectPath(next, '/dashboard');
-    const emailRedirectTo = getEmailCallbackUrl(safeNext);
+    const emailRedirectTo = getEmailCallbackUrl(safeNext, emailResult.normalizedEmail);
 
     // 5. Submit to Supabase Auth via SSR Server Client
     const supabase = await createServerSupabaseClient();

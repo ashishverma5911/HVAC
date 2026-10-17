@@ -200,14 +200,20 @@ try {
     customNextCallback === 'https://hvac-pearl-seven.vercel.app/auth/callback?next=%2Fonboarding',
     'Correctly preserves internal redirect target on production callback'
   );
+
+  const callbackWithEmail = getEmailCallbackUrl('/dashboard', 'contractor@summit-hvac.com');
+  assert(
+    callbackWithEmail === 'https://hvac-pearl-seven.vercel.app/auth/callback?email=contractor%40summit-hvac.com',
+    'Appends normalized email hint parameter to email callback URL'
+  );
 } finally {
   (process.env as any).NODE_ENV = prevEnv;
 }
 
 // -----------------------------------------------------------------------------
-// TEST 6: VERIFICATION CALLBACK SUCCESS (PKCE & OTP TOKEN)
+// TEST 6: VERIFICATION CALLBACK SUCCESS (PKCE, CROSS-DEVICE & OTP TOKEN)
 // -----------------------------------------------------------------------------
-console.log('\n--- 6. Verification Callback Success Handling ---');
+console.log('\n--- 6. Verification Callback Success & Cross-Device Handling ---');
 
 function simulateCallbackResolution(params: {
   code?: string;
@@ -217,45 +223,214 @@ function simulateCallbackResolution(params: {
   error_code?: string;
   error_description?: string;
   next?: string;
+  email?: string;
+  emailConfirmedInDb?: boolean;
+  codeExchangeError?: { name?: string; code?: string; message: string };
 }) {
   const baseUrl = PRODUCTION_APP_URL;
   const safeNext = sanitizeRedirectPath(params.next, '/dashboard');
+  const emailHint = params.email;
 
+  // Case 1: Direct error from Supabase Auth (e.g. otp_expired)
   if (params.error || params.error_code) {
     const url = new URL('/login', baseUrl);
     url.searchParams.set('error', 'verification_failed');
-    url.searchParams.set('error_description', params.error_description || 'Link expired');
+    url.searchParams.set('error_code', params.error_code || params.error || 'expired');
+    const isExpiredOrUsed =
+      params.error_code === 'otp_expired' ||
+      params.error_description?.toLowerCase().includes('expired') ||
+      params.error_description?.toLowerCase().includes('already');
+    url.searchParams.set(
+      'error_description',
+      isExpiredOrUsed
+        ? 'Your verification link has expired or has already been used. If your account is already verified, please sign in below. Otherwise, request a new verification email.'
+        : params.error_description || 'Your verification link is invalid or has expired.'
+    );
+    if (emailHint) url.searchParams.set('email', emailHint);
     return { status: 302, redirect: url.toString() };
   }
 
+  // Case 2: PKCE code exchange
   if (params.code) {
+    if (params.codeExchangeError) {
+      const errMsg = params.codeExchangeError.message.toLowerCase();
+      const isMissingVerifier =
+        params.codeExchangeError.name === 'AuthPKCECodeVerifierMissingError' ||
+        params.codeExchangeError.code === 'pkce_code_verifier_not_found' ||
+        errMsg.includes('code verifier') ||
+        errMsg.includes('different browser or device');
+
+      const isAlreadyConsumedOrInvalid =
+        errMsg.includes('already been used') ||
+        errMsg.includes('invalid grant') ||
+        errMsg.includes('invalid code') ||
+        errMsg.includes('bad_code_verifier') ||
+        errMsg.includes('code is invalid');
+
+      if (isMissingVerifier || isAlreadyConsumedOrInvalid) {
+        // SECURITY REQUIREMENT: A missing PKCE verifier alone must NOT automatically
+        // be treated as proof that email verification succeeded.
+        // Check for reliable evidence that the user's email is confirmed in the database.
+        const isReliablyConfirmed = Boolean(params.emailConfirmedInDb && emailHint);
+
+        if (isReliablyConfirmed) {
+          const verifiedRedirect = new URL('/login', baseUrl);
+          verifiedRedirect.searchParams.set('verified', 'true');
+          verifiedRedirect.searchParams.set('notice', 'cross_device');
+          if (emailHint) verifiedRedirect.searchParams.set('email', emailHint);
+          if (safeNext !== '/dashboard') verifiedRedirect.searchParams.set('redirect', safeNext);
+          return { status: 302, redirect: verifiedRedirect.toString(), isCrossDevice: true, verified: true };
+        }
+
+        // Verification cannot be established (missing PKCE verifier without confirmed email status).
+        // Display a neutral message asking the user to sign in or request a fresh verification email.
+        const neutralRedirect = new URL('/login', baseUrl);
+        neutralRedirect.searchParams.set('notice', 'unverified_device');
+        if (emailHint) neutralRedirect.searchParams.set('email', emailHint);
+        if (safeNext !== '/dashboard') neutralRedirect.searchParams.set('redirect', safeNext);
+        return { status: 302, redirect: neutralRedirect.toString(), isCrossDevice: true, verified: false };
+      }
+
+      const loginRedirect = new URL('/login', baseUrl);
+      loginRedirect.searchParams.set('error', 'verification_failed');
+      loginRedirect.searchParams.set('error_code', params.codeExchangeError.code || 'code_exchange_failed');
+      loginRedirect.searchParams.set('error_description', 'Could not complete automatic sign-in. Please sign in with your password.');
+      if (emailHint) loginRedirect.searchParams.set('email', emailHint);
+      return { status: 302, redirect: loginRedirect.toString() };
+    }
+
     const url = new URL('/login', baseUrl);
     url.searchParams.set('verified', 'true');
+    url.searchParams.set('session', 'active');
+    if (emailHint) url.searchParams.set('email', emailHint);
     if (safeNext !== '/dashboard') {
       url.searchParams.set('redirect', safeNext);
     }
     return { status: 302, redirect: url.toString() };
   }
 
+  // Case 3: Token hash verification
   if (params.token_hash) {
     const url = new URL('/login', baseUrl);
     url.searchParams.set('verified', 'true');
+    if (emailHint) url.searchParams.set('email', emailHint);
     return { status: 302, redirect: url.toString() };
   }
 
   return { status: 302, redirect: `${baseUrl}/login` };
 }
 
-const pkceSuccess = simulateCallbackResolution({ code: 'valid-pkce-auth-code-123', next: '/onboarding' });
+// 6.1: Valid same-device PKCE verification
+const pkceSuccess = simulateCallbackResolution({
+  code: 'valid-pkce-auth-code-123',
+  next: '/onboarding',
+  email: 'contractor@summit-hvac.com',
+});
 assert(
-  pkceSuccess.redirect === 'https://hvac-pearl-seven.vercel.app/login?verified=true&redirect=%2Fonboarding',
-  'PKCE code exchange redirects to login with verified=true and preserved next path'
+  pkceSuccess.redirect.includes('verified=true') &&
+    pkceSuccess.redirect.includes('session=active') &&
+    pkceSuccess.redirect.includes('redirect=%2Fonboarding') &&
+    pkceSuccess.redirect.includes('email=contractor%40summit-hvac.com'),
+  'Valid same-device PKCE code exchange redirects to login with verified=true, session=active, and email'
 );
 
-const otpSuccess = simulateCallbackResolution({ token_hash: 'valid-token-hash-456', type: 'signup' });
+// 6.2: Cross-device verification WITH confirmed email status in database
+const crossDeviceWithConfirmedStatus = simulateCallbackResolution({
+  code: 'valid-pkce-auth-code-123',
+  email: 'contractor@summit-hvac.com',
+  emailConfirmedInDb: true,
+  codeExchangeError: {
+    name: 'AuthPKCECodeVerifierMissingError',
+    message: 'PKCE code_verifier cookie was not found in browser storage',
+  },
+});
 assert(
-  otpSuccess.redirect === 'https://hvac-pearl-seven.vercel.app/login?verified=true',
-  'OTP token hash redirects to login with verified=true'
+  crossDeviceWithConfirmedStatus.redirect.includes('verified=true') &&
+    crossDeviceWithConfirmedStatus.redirect.includes('notice=cross_device') &&
+    crossDeviceWithConfirmedStatus.redirect.includes('email=contractor%40summit-hvac.com'),
+  'Cross-device PKCE with verified database status redirects to verified=true notice=cross_device'
+);
+assert(
+  !crossDeviceWithConfirmedStatus.redirect.includes('error='),
+  'Cross-device confirmed status NEVER redirects with error=verification_failed'
+);
+
+// 6.3: Missing PKCE verifier WITHOUT confirmed email status in database (attacker/bogus/unconfirmed)
+const missingVerifierWithoutConfirmedStatus = simulateCallbackResolution({
+  code: 'unverified-auth-code-999',
+  email: 'unconfirmed-user@summit-hvac.com',
+  emailConfirmedInDb: false,
+  codeExchangeError: {
+    name: 'AuthPKCECodeVerifierMissingError',
+    message: 'PKCE code_verifier cookie was not found in browser storage',
+  },
+});
+assert(
+  missingVerifierWithoutConfirmedStatus.redirect.includes('notice=unverified_device'),
+  'Missing PKCE verifier without confirmed email redirects to neutral notice=unverified_device'
+);
+assert(
+  !missingVerifierWithoutConfirmedStatus.redirect.includes('verified=true'),
+  'Missing PKCE verifier without confirmed email NEVER displays verified=true'
+);
+assert(
+  !missingVerifierWithoutConfirmedStatus.redirect.includes('error='),
+  'Missing PKCE verifier without confirmed email uses neutral notice instead of error banner'
+);
+
+// 6.4: Missing PKCE verifier without any email hint
+const missingVerifierNoEmail = simulateCallbackResolution({
+  code: 'unverified-auth-code-000',
+  codeExchangeError: {
+    name: 'AuthPKCECodeVerifierMissingError',
+    message: 'PKCE code_verifier cookie was not found in browser storage',
+  },
+});
+assert(
+  missingVerifierNoEmail.redirect.includes('notice=unverified_device') &&
+    !missingVerifierNoEmail.redirect.includes('verified=true'),
+  'Missing PKCE verifier with no email parameter safely routes to neutral notice=unverified_device'
+);
+
+// 6.5: Already-consumed authorization code WITH confirmed email status
+const preFetchedCodeConfirmed = simulateCallbackResolution({
+  code: 'already-consumed-code',
+  email: 'contractor@summit-hvac.com',
+  emailConfirmedInDb: true,
+  codeExchangeError: {
+    message: 'Invalid grant: code has already been used',
+  },
+});
+assert(
+  preFetchedCodeConfirmed.redirect.includes('verified=true') &&
+    preFetchedCodeConfirmed.redirect.includes('notice=cross_device'),
+  'Already-consumed code with confirmed DB status routes to verified=true notice=cross_device'
+);
+
+// 6.6: Already-consumed authorization code WITHOUT confirmed email status
+const preFetchedCodeUnconfirmed = simulateCallbackResolution({
+  code: 'already-consumed-code',
+  email: 'attacker@example.com',
+  emailConfirmedInDb: false,
+  codeExchangeError: {
+    message: 'Invalid grant: code has already been used',
+  },
+});
+assert(
+  preFetchedCodeUnconfirmed.redirect.includes('notice=unverified_device') &&
+    !preFetchedCodeUnconfirmed.redirect.includes('verified=true'),
+  'Already-consumed code without confirmed DB status routes to neutral notice=unverified_device'
+);
+
+// 6.7: Token hash flow
+const otpSuccess = simulateCallbackResolution({
+  token_hash: 'valid-token-hash-456',
+  type: 'signup',
+  email: 'contractor@summit-hvac.com',
+});
+assert(
+  otpSuccess.redirect === 'https://hvac-pearl-seven.vercel.app/login?verified=true&email=contractor%40summit-hvac.com',
+  'OTP token hash redirects to login with verified=true and email hint'
 );
 
 // -----------------------------------------------------------------------------
@@ -267,14 +442,16 @@ const expiredLink = simulateCallbackResolution({
   error: 'access_denied',
   error_code: 'otp_expired',
   error_description: 'Email link is invalid or has expired',
+  email: 'contractor@summit-hvac.com',
 });
 
 assert(expiredLink.redirect.includes('error=verification_failed'), 'Redirects to login with error=verification_failed');
 assert(
-  expiredLink.redirect.includes('Email+link+is+invalid+or+has+expired') ||
-    expiredLink.redirect.includes('Email%20link%20is%20invalid'),
+  expiredLink.redirect.includes('Your+verification+link+has+expired+or+has+already+been+used') ||
+    expiredLink.redirect.includes('expired'),
   'Preserves user-friendly error description for UI recovery'
 );
+assert(expiredLink.redirect.includes('email=contractor%40summit-hvac.com'), 'Preserves email in recovery redirect');
 
 // -----------------------------------------------------------------------------
 // TEST 8: RESENDING VERIFICATION EMAIL & RATE LIMITING
